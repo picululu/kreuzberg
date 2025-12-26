@@ -23,11 +23,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PHP bindings** - New PHP extension with comprehensive FFI bindings
+  - PHP E2E test suite - Generated 65 comprehensive E2E tests from fixtures
+  - Email extraction tests
+  - HTML processing tests
+  - Image extraction tests
+  - OCR functionality tests (5 scenarios)
+  - Office document tests (16 formats)
+  - PDF extraction tests (16 scenarios)
+  - Plugin API tests (14 API functions)
+  - Smoke tests (7 formats)
+  - Structured data tests (JSON/YAML)
+  - XML extraction tests
 - **CLI test app** - Comprehensive test suite for validating kreuzberg-cli published to crates.io
   - Installation verification from crates.io
   - Extraction tests (PDF, DOCX, XLSX with JSON/markdown output)
   - HTTP API server tests (health endpoint, POST /extract)
   - MCP server tests (startup and responsiveness)
+
+### Changed
+
+- **CI workflows** - All language CI workflows now only run on pull requests to main
+  - Removed push event triggers from all ci-* workflows
+  - Preserved workflow_dispatch triggers where needed
+  - Reduced unnecessary CI runs while maintaining PR quality checks
 
 ## [4.0.0-rc.20] - 2025-12-25
 
