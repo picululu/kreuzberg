@@ -1,13 +1,21 @@
 //! Archive extraction functionality.
 //!
 //! This module provides functions for extracting file lists and contents from archives.
+//! Supported formats:
+//! - ZIP archives
+//! - TAR archives (including compressed TAR.GZ, TAR.BZ2)
+//! - 7Z archives
+//!
+//! Each format has its own submodule with specialized extraction logic.
 
-use crate::error::{KreuzbergError, Result};
-use sevenz_rust2::{ArchiveReader, Password};
-use std::collections::HashMap;
-use std::io::{Cursor, Read};
-use tar::Archive as TarArchive;
-use zip::ZipArchive;
+mod sevenz;
+mod tar;
+mod zip;
+
+// Re-export all public functions for backward compatibility
+pub use sevenz::{extract_7z_metadata, extract_7z_text_content};
+pub use tar::{extract_tar_metadata, extract_tar_text_content};
+pub use zip::{extract_zip_metadata, extract_zip_text_content};
 
 /// Archive metadata extracted from an archive file.
 #[derive(Debug, Clone)]
@@ -33,223 +41,17 @@ pub struct ArchiveEntry {
     pub is_dir: bool,
 }
 
-/// Extract metadata from a ZIP archive.
-pub fn extract_zip_metadata(bytes: &[u8]) -> Result<ArchiveMetadata> {
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        ZipArchive::new(cursor).map_err(|e| KreuzbergError::parsing(format!("Failed to read ZIP archive: {}", e)))?;
-
-    let mut file_list = Vec::with_capacity(archive.len());
-    let mut total_size = 0u64;
-
-    for i in 0..archive.len() {
-        let file = archive
-            .by_index(i)
-            .map_err(|e| KreuzbergError::parsing(format!("Failed to read ZIP entry: {}", e)))?;
-
-        let path = file.name().to_string();
-        let size = file.size();
-        let is_dir = file.is_dir();
-
-        if !is_dir {
-            total_size += size;
-        }
-
-        file_list.push(ArchiveEntry { path, size, is_dir });
-    }
-
-    Ok(ArchiveMetadata {
-        format: "ZIP".to_string(),
-        file_list,
-        file_count: archive.len(),
-        total_size,
-    })
-}
-
-/// Extract metadata from a TAR archive.
-pub fn extract_tar_metadata(bytes: &[u8]) -> Result<ArchiveMetadata> {
-    let cursor = Cursor::new(bytes);
-    let mut archive = TarArchive::new(cursor);
-
-    let estimated_entries = bytes.len().saturating_div(512).max(16);
-    let mut file_list = Vec::with_capacity(estimated_entries);
-    let mut total_size = 0u64;
-    let mut file_count = 0;
-
-    let entries = archive
-        .entries()
-        .map_err(|e| KreuzbergError::parsing(format!("Failed to read TAR archive: {}", e)))?;
-
-    for entry_result in entries {
-        let entry = entry_result.map_err(|e| KreuzbergError::parsing(format!("Failed to read TAR entry: {}", e)))?;
-
-        let path = entry
-            .path()
-            .map_err(|e| KreuzbergError::parsing(format!("Failed to read TAR entry path: {}", e)))?
-            .to_string_lossy()
-            .to_string();
-
-        let size = entry.size();
-        let is_dir = entry.header().entry_type().is_dir();
-
-        if !is_dir {
-            total_size += size;
-        }
-
-        file_count += 1;
-        file_list.push(ArchiveEntry { path, size, is_dir });
-    }
-
-    Ok(ArchiveMetadata {
-        format: "TAR".to_string(),
-        file_list,
-        file_count,
-        total_size,
-    })
-}
-
-/// Extract text content from files within a ZIP archive.
-///
-/// Only extracts files with common text extensions: .txt, .md, .json, .xml, .html, .csv, .log
-pub fn extract_zip_text_content(bytes: &[u8]) -> Result<HashMap<String, String>> {
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        ZipArchive::new(cursor).map_err(|e| KreuzbergError::parsing(format!("Failed to read ZIP archive: {}", e)))?;
-
-    let estimated_text_files = archive.len().saturating_mul(3).saturating_div(10).max(2);
-    let mut contents = HashMap::with_capacity(estimated_text_files);
-    let text_extensions = [
-        ".txt", ".md", ".json", ".xml", ".html", ".csv", ".log", ".yaml", ".toml",
-    ];
-
-    for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| KreuzbergError::parsing(format!("Failed to read ZIP entry: {}", e)))?;
-
-        let path = file.name().to_string();
-
-        if !file.is_dir() && text_extensions.iter().any(|ext| path.to_lowercase().ends_with(ext)) {
-            let estimated_size = (file.size() as usize).min(10 * 1024 * 1024);
-            let mut content = String::with_capacity(estimated_size);
-            if file.read_to_string(&mut content).is_ok() {
-                contents.insert(path, content);
-            }
-        }
-    }
-
-    Ok(contents)
-}
-
-/// Extract text content from files within a TAR archive.
-///
-/// Only extracts files with common text extensions: .txt, .md, .json, .xml, .html, .csv, .log
-pub fn extract_tar_text_content(bytes: &[u8]) -> Result<HashMap<String, String>> {
-    let cursor = Cursor::new(bytes);
-    let mut archive = TarArchive::new(cursor);
-
-    let estimated_text_files = bytes.len().saturating_div(1024 * 10).min(100);
-    let mut contents = HashMap::with_capacity(estimated_text_files.max(2));
-    let text_extensions = [
-        ".txt", ".md", ".json", ".xml", ".html", ".csv", ".log", ".yaml", ".toml",
-    ];
-
-    let entries = archive
-        .entries()
-        .map_err(|e| KreuzbergError::parsing(format!("Failed to read TAR archive: {}", e)))?;
-
-    for entry_result in entries {
-        let mut entry =
-            entry_result.map_err(|e| KreuzbergError::parsing(format!("Failed to read TAR entry: {}", e)))?;
-
-        let path = entry
-            .path()
-            .map_err(|e| KreuzbergError::parsing(format!("Failed to read TAR entry path: {}", e)))?
-            .to_string_lossy()
-            .to_string();
-
-        if !entry.header().entry_type().is_dir() && text_extensions.iter().any(|ext| path.to_lowercase().ends_with(ext))
-        {
-            let estimated_size = (entry.size().min(10 * 1024 * 1024)) as usize;
-            let mut content = String::with_capacity(estimated_size);
-            if entry.read_to_string(&mut content).is_ok() {
-                contents.insert(path, content);
-            }
-        }
-    }
-
-    Ok(contents)
-}
-
-/// Extract metadata from a 7z archive.
-pub fn extract_7z_metadata(bytes: &[u8]) -> Result<ArchiveMetadata> {
-    let cursor = Cursor::new(bytes);
-    let archive = ArchiveReader::new(cursor, Password::empty())
-        .map_err(|e| KreuzbergError::parsing(format!("Failed to read 7z archive: {}", e)))?;
-
-    let mut file_list = Vec::new();
-    let mut total_size = 0u64;
-
-    for entry in &archive.archive().files {
-        let path = entry.name().to_string();
-        let size = entry.size();
-        let is_dir = entry.is_directory();
-
-        if !is_dir {
-            total_size += size;
-        }
-
-        file_list.push(ArchiveEntry { path, size, is_dir });
-    }
-
-    let file_count = file_list.len();
-
-    Ok(ArchiveMetadata {
-        format: "7Z".to_string(),
-        file_list,
-        file_count,
-        total_size,
-    })
-}
-
-/// Extract text content from files within a 7z archive.
-///
-/// Only extracts files with common text extensions: .txt, .md, .json, .xml, .html, .csv, .log
-pub fn extract_7z_text_content(bytes: &[u8]) -> Result<HashMap<String, String>> {
-    let cursor = Cursor::new(bytes);
-    let mut archive = ArchiveReader::new(cursor, Password::empty())
-        .map_err(|e| KreuzbergError::parsing(format!("Failed to read 7z archive: {}", e)))?;
-
-    let mut contents = HashMap::new();
-    let text_extensions = [
-        ".txt", ".md", ".json", ".xml", ".html", ".csv", ".log", ".yaml", ".toml",
-    ];
-
-    archive
-        .for_each_entries(|entry, reader| {
-            let path = entry.name().to_string();
-
-            if !entry.is_directory() && text_extensions.iter().any(|ext| path.to_lowercase().ends_with(ext)) {
-                let mut content = Vec::new();
-                if let Ok(_) = reader.read_to_end(&mut content)
-                    && let Ok(text) = String::from_utf8(content)
-                {
-                    contents.insert(path, text);
-                }
-            }
-            Ok(true)
-        })
-        .map_err(|e| KreuzbergError::parsing(format!("Failed to read 7z entries: {}", e)))?;
-
-    Ok(contents)
-}
+/// Common text file extensions that should be extracted from archives.
+pub(crate) const TEXT_EXTENSIONS: &[&str] = &[
+    ".txt", ".md", ".json", ".xml", ".html", ".csv", ".log", ".yaml", ".toml",
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tar::Builder as TarBuilder;
-    use zip::write::{FileOptions, ZipWriter};
+    use std::io::{Cursor, Write};
+    use ::tar::Builder as TarBuilder;
+    use ::zip::write::{FileOptions, ZipWriter};
 
     #[test]
     fn test_extract_zip_metadata() {
@@ -283,14 +85,14 @@ mod tests {
             let mut tar = TarBuilder::new(&mut cursor);
 
             let data1 = b"Hello, World!";
-            let mut header1 = tar::Header::new_gnu();
+            let mut header1 = ::tar::Header::new_gnu();
             header1.set_path("test.txt").unwrap();
             header1.set_size(data1.len() as u64);
             header1.set_cksum();
             tar.append(&header1, &data1[..]).unwrap();
 
             let data2 = b"# Header";
-            let mut header2 = tar::Header::new_gnu();
+            let mut header2 = ::tar::Header::new_gnu();
             header2.set_path("dir/file.md").unwrap();
             header2.set_size(data2.len() as u64);
             header2.set_cksum();
@@ -339,14 +141,14 @@ mod tests {
             let mut tar = TarBuilder::new(&mut cursor);
 
             let data1 = b"Hello, World!";
-            let mut header1 = tar::Header::new_gnu();
+            let mut header1 = ::tar::Header::new_gnu();
             header1.set_path("test.txt").unwrap();
             header1.set_size(data1.len() as u64);
             header1.set_cksum();
             tar.append(&header1, &data1[..]).unwrap();
 
             let data2 = b"# README";
-            let mut header2 = tar::Header::new_gnu();
+            let mut header2 = ::tar::Header::new_gnu();
             header2.set_path("readme.md").unwrap();
             header2.set_size(data2.len() as u64);
             header2.set_cksum();
@@ -413,15 +215,15 @@ mod tests {
         {
             let mut tar = TarBuilder::new(&mut cursor);
 
-            let mut header_dir = tar::Header::new_gnu();
+            let mut header_dir = ::tar::Header::new_gnu();
             header_dir.set_path("dir1/").unwrap();
             header_dir.set_size(0);
-            header_dir.set_entry_type(tar::EntryType::Directory);
+            header_dir.set_entry_type(::tar::EntryType::Directory);
             header_dir.set_cksum();
             tar.append(&header_dir, &[][..]).unwrap();
 
             let data = b"content1";
-            let mut header1 = tar::Header::new_gnu();
+            let mut header1 = ::tar::Header::new_gnu();
             header1.set_path("dir1/file1.txt").unwrap();
             header1.set_size(data.len() as u64);
             header1.set_cksum();
@@ -447,7 +249,7 @@ mod tests {
             let mut tar = TarBuilder::new(&mut tar_data);
 
             let data = b"Hello from gzip!";
-            let mut header = tar::Header::new_gnu();
+            let mut header = ::tar::Header::new_gnu();
             header.set_path("test.txt").unwrap();
             header.set_size(data.len() as u64);
             header.set_cksum();
@@ -464,20 +266,20 @@ mod tests {
 
     #[test]
     fn test_extract_7z_metadata_with_files() {
-        use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
+        use sevenz_rust2::{ArchiveEntry as SevenzEntry, ArchiveWriter};
 
         let cursor = {
             let cursor = Cursor::new(Vec::new());
             let mut sz = ArchiveWriter::new(cursor).unwrap();
 
             sz.push_archive_entry(
-                ArchiveEntry::new_file("test.txt"),
+                SevenzEntry::new_file("test.txt"),
                 Some(Cursor::new(b"Hello 7z!".to_vec())),
             )
             .unwrap();
 
             sz.push_archive_entry(
-                ArchiveEntry::new_file("data.json"),
+                SevenzEntry::new_file("data.json"),
                 Some(Cursor::new(b"{\"key\":\"value\"}".to_vec())),
             )
             .unwrap();
@@ -538,7 +340,7 @@ mod tests {
             let mut inner_tar = TarBuilder::new(&mut inner_cursor);
 
             let data = b"Nested content";
-            let mut header = tar::Header::new_gnu();
+            let mut header = ::tar::Header::new_gnu();
             header.set_path("inner.txt").unwrap();
             header.set_size(data.len() as u64);
             header.set_cksum();
@@ -552,14 +354,14 @@ mod tests {
         {
             let mut outer_tar = TarBuilder::new(&mut outer_cursor);
 
-            let mut header1 = tar::Header::new_gnu();
+            let mut header1 = ::tar::Header::new_gnu();
             header1.set_path("archive.tar").unwrap();
             header1.set_size(inner_bytes.len() as u64);
             header1.set_cksum();
             outer_tar.append(&header1, &inner_bytes[..]).unwrap();
 
             let data = b"Outer content";
-            let mut header2 = tar::Header::new_gnu();
+            let mut header2 = ::tar::Header::new_gnu();
             header2.set_path("readme.txt").unwrap();
             header2.set_size(data.len() as u64);
             header2.set_cksum();
@@ -579,6 +381,8 @@ mod tests {
 
     #[test]
     fn test_extract_zip_corrupted_data() {
+        use crate::error::KreuzbergError;
+
         let mut valid_cursor = Cursor::new(Vec::new());
         {
             let mut zip = ZipWriter::new(&mut valid_cursor);
@@ -608,7 +412,7 @@ mod tests {
             let mut tar = TarBuilder::new(&mut valid_cursor);
 
             let data = b"content";
-            let mut header = tar::Header::new_gnu();
+            let mut header = ::tar::Header::new_gnu();
             header.set_path("test.txt").unwrap();
             header.set_size(data.len() as u64);
             header.set_cksum();
@@ -704,7 +508,7 @@ mod tests {
             ];
 
             for (path, data) in files {
-                let mut header = tar::Header::new_gnu();
+                let mut header = ::tar::Header::new_gnu();
                 header.set_path(path).unwrap();
                 header.set_size(data.len() as u64);
                 header.set_cksum();
@@ -839,20 +643,20 @@ mod tests {
 
     #[test]
     fn test_extract_7z_text_content() {
-        use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
+        use sevenz_rust2::{ArchiveEntry as SevenzEntry, ArchiveWriter};
 
         let cursor = {
             let cursor = Cursor::new(Vec::new());
             let mut sz = ArchiveWriter::new(cursor).unwrap();
 
             sz.push_archive_entry(
-                ArchiveEntry::new_file("test.txt"),
+                SevenzEntry::new_file("test.txt"),
                 Some(Cursor::new(b"Hello 7z text!".to_vec())),
             )
             .unwrap();
 
             sz.push_archive_entry(
-                ArchiveEntry::new_file("readme.md"),
+                SevenzEntry::new_file("readme.md"),
                 Some(Cursor::new(b"# 7z README".to_vec())),
             )
             .unwrap();
@@ -894,7 +698,7 @@ mod tests {
 
             let large_content = "y".repeat(50_000);
 
-            let mut header = tar::Header::new_gnu();
+            let mut header = ::tar::Header::new_gnu();
             header.set_path("large.txt").unwrap();
             header.set_size(large_content.len() as u64);
             header.set_cksum();
@@ -947,6 +751,8 @@ mod tests {
 
     #[test]
     fn test_extract_7z_corrupted_data() {
+        use crate::error::KreuzbergError;
+
         let invalid_7z_data = vec![0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00];
 
         let result = extract_7z_metadata(&invalid_7z_data);

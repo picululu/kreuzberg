@@ -21,7 +21,7 @@ pub unsafe extern "C" fn kreuzberg_parse_heading_style(value: *const c_char) -> 
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
@@ -61,7 +61,7 @@ pub unsafe extern "C" fn kreuzberg_parse_code_block_style(value: *const c_char) 
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn kreuzberg_parse_highlight_style(value: *const c_char) -
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
@@ -139,7 +139,7 @@ pub unsafe extern "C" fn kreuzberg_parse_list_indent_type(value: *const c_char) 
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn kreuzberg_parse_whitespace_mode(value: *const c_char) -
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn kreuzberg_parse_newline_style(value: *const c_char) -> 
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
@@ -253,7 +253,7 @@ pub unsafe extern "C" fn kreuzberg_parse_preprocessing_preset(value: *const c_ch
         return -1;
     }
 
-    let c_str = match CStr::from_ptr(value).to_str() {
+    let c_str = match unsafe { CStr::from_ptr(value) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };

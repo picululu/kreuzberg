@@ -9,7 +9,7 @@ use zip::ZipArchive;
 
 use crate::error::Result;
 use crate::text::utf8_validation;
-use crate::types::PptxMetadata;
+use crate::types::metadata::PptxMetadata;
 use roxmltree::Document;
 
 #[cfg(feature = "office")]
@@ -102,12 +102,18 @@ pub(super) fn extract_metadata(archive: &mut ZipArchive<File>) -> PptxMetadata {
             }
         }
 
-        PptxMetadata { fonts: Vec::new() }
+        PptxMetadata {
+            slide_count: 0,
+            slide_names: Vec::new(),
+        }
     }
 
     #[cfg(not(feature = "office"))]
     {
-        PptxMetadata { fonts: Vec::new() }
+        PptxMetadata {
+            slide_count: 0,
+            slide_names: Vec::new(),
+        }
     }
 }
 

@@ -3,35 +3,13 @@
 //! This module implements the main chunking algorithms and provides the primary
 //! public API functions for splitting text into chunks.
 
-use crate::error::{KreuzbergError, Result};
-use crate::types::{Chunk, ChunkMetadata, PageBoundary};
-use text_splitter::{Characters, ChunkCapacity, ChunkConfig, MarkdownSplitter, TextSplitter};
+use crate::error::Result;
+use crate::types::PageBoundary;
+use text_splitter::{MarkdownSplitter, TextSplitter};
 
-use super::boundaries::calculate_page_range;
+use super::builder::{build_chunk_config, build_chunks};
 use super::config::{ChunkerType, ChunkingConfig, ChunkingResult};
 use super::validation::validate_utf8_boundaries;
-
-/// Build a ChunkConfig from chunking parameters.
-///
-/// # Arguments
-///
-/// * `max_characters` - Maximum characters per chunk
-/// * `overlap` - Character overlap between consecutive chunks
-/// * `trim` - Whether to trim whitespace from boundaries
-///
-/// # Returns
-///
-/// A configured ChunkConfig ready for use with text splitters.
-///
-/// # Errors
-///
-/// Returns `KreuzbergError::Validation` if configuration is invalid.
-fn build_chunk_config(max_characters: usize, overlap: usize, trim: bool) -> Result<ChunkConfig<Characters>> {
-    ChunkConfig::new(ChunkCapacity::new(max_characters))
-        .with_overlap(overlap)
-        .map(|config| config.with_trim(trim))
-        .map_err(|e| KreuzbergError::validation(format!("Invalid chunking configuration: {}", e)))
-}
 
 /// Split text into chunks with optional page boundary tracking.
 ///
@@ -94,44 +72,7 @@ pub fn chunk_text(
         }
     };
 
-    let total_chunks = text_chunks.len();
-    let mut byte_offset = 0;
-
-    let mut chunks: Vec<Chunk> = Vec::new();
-
-    for (index, chunk_text) in text_chunks.into_iter().enumerate() {
-        let byte_start = byte_offset;
-        let chunk_length = chunk_text.len();
-        let byte_end = byte_start + chunk_length;
-
-        let overlap_chars = if index < total_chunks - 1 {
-            config.overlap.min(chunk_length)
-        } else {
-            0
-        };
-        byte_offset = byte_end - overlap_chars;
-
-        let (first_page, last_page) = if let Some(boundaries) = page_boundaries {
-            calculate_page_range(byte_start, byte_end, boundaries)?
-        } else {
-            (None, None)
-        };
-
-        chunks.push(Chunk {
-            content: chunk_text.to_string(),
-            embedding: None,
-            metadata: ChunkMetadata {
-                byte_start,
-                byte_end,
-                token_count: None,
-                chunk_index: index,
-                total_chunks,
-                first_page,
-                last_page,
-            },
-        });
-    }
-
+    let chunks = build_chunks(text_chunks.into_iter(), config.overlap, page_boundaries)?;
     let chunk_count = chunks.len();
 
     Ok(ChunkingResult { chunks, chunk_count })
@@ -219,6 +160,7 @@ pub fn chunk_texts_batch(texts: &[&str], config: &ChunkingConfig) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::KreuzbergError;
 
     #[test]
     fn test_chunk_empty_text() {

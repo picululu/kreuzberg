@@ -5,6 +5,8 @@
 //! - Legacy format conversion (DOC, PPT)
 //! - Extraction pipeline orchestration
 
+#[cfg(not(feature = "office"))]
+use crate::KreuzbergError;
 use crate::Result;
 use crate::core::config::ExtractionConfig;
 use crate::core::mime::{LEGACY_POWERPOINT_MIME_TYPE, LEGACY_WORD_MIME_TYPE};

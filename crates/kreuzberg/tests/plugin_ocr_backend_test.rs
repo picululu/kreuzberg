@@ -63,6 +63,7 @@ impl OcrBackend for MockOcrBackend {
             chunks: None,
             images: None,
             pages: None,
+                djot_content: None,
             elements: None,
         })
     }
@@ -160,6 +161,7 @@ impl OcrBackend for ValidatingOcrBackend {
             chunks: None,
             images: None,
             pages: None,
+                djot_content: None,
             elements: None,
         })
     }
@@ -218,6 +220,7 @@ impl OcrBackend for MetadataOcrBackend {
             chunks: None,
             images: None,
             pages: None,
+                djot_content: None,
             elements: None,
         })
     }

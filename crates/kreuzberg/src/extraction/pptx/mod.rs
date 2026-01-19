@@ -419,7 +419,8 @@ mod tests {
         let pptx_bytes = create_test_pptx_bytes(vec!["Content"]);
         let result = extract_pptx_from_bytes(&pptx_bytes, false, None).unwrap();
 
-        assert!(result.metadata.fonts.is_empty() || !result.metadata.fonts.is_empty());
+        // Metadata should be populated (slide_count should be 1 for the test content)
+        assert_eq!(result.metadata.slide_count, 1);
     }
 
     #[test]

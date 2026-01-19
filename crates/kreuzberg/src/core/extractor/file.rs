@@ -18,6 +18,7 @@ use crate::{KreuzbergError, Result};
 use serde_json::json;
 use std::path::Path;
 
+#[cfg(feature = "office")]
 use super::helpers::pool_mime_type;
 
 use super::helpers::get_extractor;

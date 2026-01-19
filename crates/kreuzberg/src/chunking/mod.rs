@@ -52,6 +52,7 @@ use std::sync::Arc;
 
 // Module declarations
 pub mod boundaries;
+mod builder;
 pub mod config;
 pub mod core;
 pub mod processor;
