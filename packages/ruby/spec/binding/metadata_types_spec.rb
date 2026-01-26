@@ -1157,6 +1157,9 @@ RSpec.describe 'Kreuzberg Metadata Types' do
       test_files = []
       results = []
       errors = []
+      read_complete = Mutex.new
+      read_count = 0
+      expected_reads = 5
 
       5.times do |i|
         html_content = <<~HTML
@@ -1184,10 +1187,21 @@ RSpec.describe 'Kreuzberg Metadata Types' do
             results << result
           rescue StandardError => e
             errors << e
+          ensure
+            # Signal that this thread has completed reading
+            read_complete.synchronize do
+              read_count += 1
+            end
           end
         end
 
         threads.each(&:join)
+
+        # Wait for all reads to complete before cleanup
+        read_complete.synchronize do
+          # All threads should be done by now, but ensure read_count matches
+          expect(read_count).to eq(expected_reads)
+        end
 
         expect(errors).to be_empty
 

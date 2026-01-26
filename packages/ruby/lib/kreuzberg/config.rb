@@ -789,25 +789,46 @@ module Kreuzberg
         new(**normalize_hash_keys(hash))
       end
 
-      def initialize(
-        use_cache: true,
-        enable_quality_processing: false,
-        force_ocr: false,
-        ocr: nil,
-        chunking: nil,
-        language_detection: nil,
-        pdf_options: nil,
-        image_extraction: nil,
-        image_preprocessing: nil,
-        postprocessor: nil,
-        token_reduction: nil,
-        keywords: nil,
-        html_options: nil,
-        pages: nil,
-        max_concurrent_extractions: nil,
-        output_format: nil,
-        result_format: nil
-      )
+      def initialize(hash = nil,
+                     use_cache: true,
+                     enable_quality_processing: false,
+                     force_ocr: false,
+                     ocr: nil,
+                     chunking: nil,
+                     language_detection: nil,
+                     pdf_options: nil,
+                     image_extraction: nil,
+                     image_preprocessing: nil,
+                     postprocessor: nil,
+                     token_reduction: nil,
+                     keywords: nil,
+                     html_options: nil,
+                     pages: nil,
+                     max_concurrent_extractions: nil,
+                     output_format: nil,
+                     result_format: nil)
+        # Support deserialization from hash
+        if hash.is_a?(Hash)
+          hash = hash.transform_keys(&:to_sym)
+          use_cache = hash[:use_cache] if hash.key?(:use_cache)
+          enable_quality_processing = hash[:enable_quality_processing] if hash.key?(:enable_quality_processing)
+          force_ocr = hash[:force_ocr] if hash.key?(:force_ocr)
+          ocr = hash[:ocr] if hash.key?(:ocr)
+          chunking = hash[:chunking] if hash.key?(:chunking)
+          language_detection = hash[:language_detection] if hash.key?(:language_detection)
+          pdf_options = hash[:pdf_options] if hash.key?(:pdf_options)
+          image_extraction = hash[:image_extraction] if hash.key?(:image_extraction)
+          image_preprocessing = hash[:image_preprocessing] if hash.key?(:image_preprocessing)
+          postprocessor = hash[:postprocessor] if hash.key?(:postprocessor)
+          token_reduction = hash[:token_reduction] if hash.key?(:token_reduction)
+          keywords = hash[:keywords] if hash.key?(:keywords)
+          html_options = hash[:html_options] if hash.key?(:html_options)
+          pages = hash[:pages] if hash.key?(:pages)
+          max_concurrent_extractions = hash[:max_concurrent_extractions] if hash.key?(:max_concurrent_extractions)
+          output_format = hash[:output_format] if hash.key?(:output_format)
+          result_format = hash[:result_format] if hash.key?(:result_format)
+        end
+
         @use_cache = use_cache ? true : false
         @enable_quality_processing = enable_quality_processing ? true : false
         @force_ocr = force_ocr ? true : false

@@ -64,13 +64,13 @@ class TestExtractionConfigCustomSerialization:
         """Test serialization of config with custom string values."""
         config = ExtractionConfig(
             output_format="markdown",
-            result_format="Unified",
+            result_format="unified",
         )
         config_json = config_to_json(config)
         parsed = json.loads(config_json)
 
         assert parsed["output_format"] == "markdown", "output_format should be markdown"
-        assert parsed["result_format"] == "Unified", "result_format should be Unified"
+        assert parsed["result_format"] == "unified", "result_format should be unified"
 
     def test_config_with_custom_integer_values(self) -> None:
         """Test serialization of config with custom integer values."""
@@ -154,7 +154,7 @@ class TestExtractionConfigFieldNames:
             use_cache=True,
             force_ocr=False,
             output_format="markdown",
-            result_format="Unified",
+            result_format="unified",
         )
 
         config_json = config_to_json(config)
@@ -223,7 +223,7 @@ class TestExtractionConfigComprehensive:
             enable_quality_processing=False,
             force_ocr=True,
             output_format="markdown",
-            result_format="Unified",
+            result_format="unified",
             max_concurrent_extractions=8,
         )
 
