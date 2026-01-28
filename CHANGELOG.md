@@ -33,6 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created persistent cache directory for Hugging Face models with proper kreuzberg user ownership
   - Models now persist between container restarts via existing cache volume
 
+#### API
+- **JSON error responses**: Added custom `JsonApi` extractor for consistent JSON error responses instead of plain text
+  - All JSON parsing errors now return proper JSON `ErrorResponse` with `error_type`, `message`, and `status_code`
+  - Content-Type header correctly set to `application/json` for all error responses
+- **OpenAPI schema improvements**: Enhanced schema validation constraints
+  - Added 422 response documentation with `ErrorResponse` body type
+  - Added `minimum`/`maximum` constraints for chunking config (max_characters >= 101, overlap 0-1999)
+  - Added `min_items` constraint for embed texts array
+- **Chunking validation**: Added validation that `overlap` must be less than `max_characters`
+  - Returns 400 Bad Request with descriptive error message for invalid configurations
+- **Embed validation**: Added validation that all text entries must be non-empty strings
+  - Returns 400 Bad Request for empty strings in texts array
+- **Default embedding model**: `EmbeddingConfig.model` now defaults to "balanced" preset when not specified
+
+#### CI/CD
+- **Schemathesis API contract testing**: Added schemathesis to Docker CI workflow
+  - Validates API against OpenAPI schema with 10 examples per endpoint
+  - Checks: not_a_server_error, status_code_conformance, content_type_conformance, response_schema_conformance, negative_data_rejection
+
 #### Rust Core
 - **XLSX OOM with Excel Solver files**: Fixed out-of-memory issue when processing XLSX files with sparse data at extreme cell positions ([#331](https://github.com/kreuzberg-dev/kreuzberg/issues/331))
   - Excel Solver add-in stores configuration in cells at extreme positions (XFD1048550-1048575 = column 16384, rows near 1M)
