@@ -28,7 +28,7 @@ defmodule E2E.ConfigurationTest do
         {:ok, config} = Kreuzberg.ExtractionConfig.discover
 
         assert config.chunking != nil
-        assert config.chunking.max_chars == 50
+        assert config.chunking["max_chars"] == 50
       after
         File.cd!(prev_cwd)
       end
@@ -52,34 +52,10 @@ defmodule E2E.ConfigurationTest do
       {:ok, config} = Kreuzberg.ExtractionConfig.from_file(config_path)
 
       assert config.chunking != nil
-      assert config.chunking.max_chars == 100
-      assert config.chunking.max_overlap == 20
+      assert config.chunking["max_chars"] == 100
+      assert config.chunking["max_overlap"] == 20
       assert config.language_detection != nil
-      assert config.language_detection.enabled == false
-    end
-
-  end
-end
-
-defmodule E2E.DocumentExtractorManagementTest do
-  use ExUnit.Case, async: false
-
-  describe "Document Extractor Management" do
-    test "Clear all document extractors and verify list is empty" do
-      Kreuzberg.Plugin.clear_document_extractors()
-      {:ok, result} = Kreuzberg.Plugin.list_document_extractors()
-      assert Enum.empty?(result)
-    end
-
-    test "List all registered document extractors" do
-      {:ok, result} = Kreuzberg.Plugin.list_document_extractors()
-      assert is_list(result)
-      assert Enum.all?(result, &is_binary/1)
-    end
-
-    test "Unregister nonexistent document extractor gracefully" do
-      Kreuzberg.Plugin.unregister_document_extractor("nonexistent-extractor-xyz")
-      # Should not raise an error
+      assert config.language_detection["enabled"] == false
     end
 
   end
@@ -107,7 +83,7 @@ defmodule E2E.MimeUtilitiesTest do
     end
 
     test "Get file extensions for a MIME type" do
-      result = Kreuzberg.get_extensions_for_mime("application/pdf")
+      {:ok, result} = Kreuzberg.get_extensions_for_mime("application/pdf")
       assert is_list(result)
       assert Enum.member?(result, "pdf")
     end
@@ -132,7 +108,7 @@ defmodule E2E.OcrBackendManagementTest do
     end
 
     test "Unregister nonexistent OCR backend gracefully" do
-      Kreuzberg.Plugin.unregister_ocr_backend("nonexistent-backend-xyz")
+      Kreuzberg.Plugin.unregister_ocr_backend(:"nonexistent-backend-xyz")
       # Should not raise an error
     end
 

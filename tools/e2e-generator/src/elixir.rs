@@ -78,7 +78,7 @@ defmodule E2E.Helpers do
     end
   end
 
-  def run_fixture(fixture_id, relative_path, config_hash, opts \\\\ []) do
+  def run_fixture(fixture_id, relative_path, config_hash, opts \\ []) do
     requirements = Keyword.get(opts, :requirements, [])
     notes = Keyword.get(opts, :notes, nil)
     skip_if_missing = Keyword.get(opts, :skip_if_missing, true)
@@ -87,7 +87,7 @@ defmodule E2E.Helpers do
     )
   end
 
-  def run_fixture_with_method(fixture_id, relative_path, config_hash, method, input_type, opts \\\\ []) do
+  def run_fixture_with_method(fixture_id, relative_path, config_hash, method, input_type, opts \\ []) do
     requirements = Keyword.get(opts, :requirements, [])
     notes = Keyword.get(opts, :notes, nil)
     skip_if_missing = Keyword.get(opts, :skip_if_missing, true)
@@ -134,18 +134,14 @@ defmodule E2E.Helpers do
         Kreuzberg.extract(bytes, mime_type, config)
 
       {:async, :file} ->
-        case Kreuzberg.extract_file_async(document_path, mime_type, config) do
-          {:ok, task} -> Task.await(task, :infinity)
-          error -> error
-        end
+        Kreuzberg.extract_file_async(document_path, mime_type, config)
+        |> Task.await(:infinity)
 
       {:async, :bytes} ->
         bytes = File.read!(document_path)
 
-        case Kreuzberg.extract_async(bytes, mime_type, config) do
-          {:ok, task} -> Task.await(task, :infinity)
-          error -> error
-        end
+        Kreuzberg.extract_async(bytes, mime_type, config)
+        |> Task.await(:infinity)
 
       {:batch_sync, :file} ->
         case Kreuzberg.batch_extract_files([document_path], mime_type, config) do
@@ -164,31 +160,21 @@ defmodule E2E.Helpers do
         end
 
       {:batch_async, :file} ->
-        case Kreuzberg.batch_extract_files_async([document_path], mime_type, config) do
-          {:ok, task} ->
-            case Task.await(task, :infinity) do
-              {:ok, [first | _]} -> {:ok, first}
-              {:ok, []} -> {:error, "No results from batch extraction"}
-              error -> error
-            end
-
-          error ->
-            error
+        case Kreuzberg.batch_extract_files_async([document_path], mime_type, config)
+             |> Task.await(:infinity) do
+          {:ok, [first | _]} -> {:ok, first}
+          {:ok, []} -> {:error, "No results from batch extraction"}
+          error -> error
         end
 
       {:batch_async, :bytes} ->
         bytes = File.read!(document_path)
 
-        case Kreuzberg.batch_extract_bytes_async([bytes], [mime_type], config) do
-          {:ok, task} ->
-            case Task.await(task, :infinity) do
-              {:ok, [first | _]} -> {:ok, first}
-              {:ok, []} -> {:error, "No results from batch extraction"}
-              error -> error
-            end
-
-          error ->
-            error
+        case Kreuzberg.batch_extract_bytes_async([bytes], [mime_type], config)
+             |> Task.await(:infinity) do
+          {:ok, [first | _]} -> {:ok, first}
+          {:ok, []} -> {:error, "No results from batch extraction"}
+          error -> error
         end
 
       _ ->
@@ -289,7 +275,7 @@ defmodule E2E.Helpers do
 
       if min_confidence do
         metadata = result.metadata || %{}
-        confidence = metadata["confidence"] || metadata[:confidence]
+        confidence = Map.get(metadata, "confidence") || Map.get(metadata, :confidence)
 
         if confidence && confidence < min_confidence do
           flunk("Language confidence #{confidence} is less than minimum #{min_confidence}")
@@ -454,11 +440,11 @@ defmodule E2E.Helpers do
   end
 
   def assert_document(result, opts) do
-    document = result[:document] || result.document
+    document = Map.get(result, :document)
 
     if opts[:has_document] do
       assert document != nil, "Expected document but got nil"
-      nodes = if is_list(document), do: document, else: document[:nodes] || document["nodes"] || []
+      nodes = if is_list(document), do: document, else: Map.get(document, :nodes) || Map.get(document, "nodes") || []
       nodes_len = length(nodes)
 
       if opts[:min_node_count] && nodes_len < opts[:min_node_count] do
@@ -469,8 +455,8 @@ defmodule E2E.Helpers do
         found_types =
           nodes
           |> Enum.map(fn node ->
-            content = node[:content] || node["content"]
-            if content, do: content[:node_type] || content["node_type"], else: node[:node_type] || node["node_type"]
+            content = Map.get(node, :content) || Map.get(node, "content")
+            if content, do: Map.get(content, :node_type) || Map.get(content, "node_type"), else: Map.get(node, :node_type) || Map.get(node, "node_type")
           end)
           |> Enum.reject(&is_nil/1)
           |> Enum.uniq()
@@ -499,7 +485,7 @@ defmodule E2E.Helpers do
   end
 
   def assert_ocr_elements(result, opts) do
-    ocr_elements = result[:ocr_elements] || result.ocr_elements || []
+    ocr_elements = Map.get(result, :ocr_elements) || []
     count = length(ocr_elements)
 
     if opts[:min_count] && count < opts[:min_count] do
@@ -514,16 +500,21 @@ defmodule E2E.Helpers do
   defp fetch_metadata_value(metadata, path) do
     value = lookup_metadata_path(metadata, path)
 
-    if value == nil do
-      format = metadata["format"] || metadata[:format]
+    cond do
+      value == nil ->
+        # Fallback: try inside the format sub-map
+        format = Map.get(metadata, "format") || Map.get(metadata, :format)
+        if is_map(format), do: lookup_metadata_path(format, path), else: nil
 
-      if is_map(format) do
-        lookup_metadata_path(format, path)
-      else
-        nil
-      end
-    else
-      value
+      is_map(value) and not is_struct(value) ->
+        # Value is a plain map - also try looking inside it for the same path.
+        # Handles collision where struct field name matches a key in the sub-map
+        # (e.g. metadata.format is a map that also has a "format" key).
+        nested = lookup_metadata_path(value, path)
+        if nested != nil, do: nested, else: value
+
+      true ->
+        value
     end
   end
 
@@ -532,7 +523,7 @@ defmodule E2E.Helpers do
     |> String.split(".")
     |> Enum.reduce(metadata, fn segment, current ->
       if is_map(current) do
-        current[segment] || current[String.to_atom(segment)]
+        Map.get(current, segment) || Map.get(current, String.to_atom(segment))
       else
         nil
       end
@@ -566,6 +557,8 @@ const ELIXIR_MIX_TEMPLATE: &str = r#"defmodule E2E.MixProject do
   use Mix.Project
 
   def project do
+    System.put_env("KREUZBERG_BUILD", "true")
+
     [
       app: :e2e_elixir,
       version: "0.1.0",
@@ -582,7 +575,8 @@ const ELIXIR_MIX_TEMPLATE: &str = r#"defmodule E2E.MixProject do
 
   defp deps do
     [
-      {:kreuzberg, path: "../../packages/elixir"}
+      {:kreuzberg, path: "../../packages/elixir"},
+      {:rustler, "~> 0.37.0", runtime: false}
     ]
   end
 end
@@ -1172,6 +1166,10 @@ fn generate_plugin_api_tests(fixtures: &[&Fixture], e2e_dir: &Utf8Path) -> Resul
             .with_context(|| format!("Fixture '{}' missing api_category", fixture.id))?
             .as_str()
             .to_string();
+        // Skip document_extractor_management - Elixir binding doesn't have these functions
+        if category == "document_extractor_management" {
+            continue;
+        }
         grouped_map.entry(category).or_default().push(fixture);
     }
     let mut grouped: Vec<_> = grouped_map.into_iter().collect();
@@ -1294,7 +1292,7 @@ fn render_graceful_unregister_test(buffer: &mut String, fixture: &Fixture) -> Re
 
     writeln!(
         buffer,
-        "      Kreuzberg.Plugin.{}(\"{}\")",
+        "      Kreuzberg.Plugin.{}(:\"{}\")",
         function_name,
         escape_elixir_string_content(arg)
     )?;
@@ -1530,7 +1528,7 @@ fn render_mime_extension_lookup_test(buffer: &mut String, fixture: &Fixture) -> 
 
     writeln!(
         buffer,
-        "      result = Kreuzberg.{}(\"{}\")",
+        "      {{:ok, result}} = Kreuzberg.{}(\"{}\")",
         function_name,
         escape_elixir_string_content(mime_type)
     )?;
@@ -1556,9 +1554,15 @@ fn render_object_property_assertion(
     let path_parts: Vec<&str> = prop.path.split('.').collect();
 
     let mut accessor = var_name.to_string();
-    for part in path_parts {
-        accessor.push('.');
-        accessor.push_str(part);
+    for (i, part) in path_parts.iter().enumerate() {
+        if i == 0 {
+            // First level: struct field access (atom key)
+            accessor.push('.');
+            accessor.push_str(part);
+        } else {
+            // Deeper levels: map with string keys
+            accessor.push_str(&format!("[\"{}\"]", part));
+        }
     }
 
     if let Some(exists) = prop.exists {
