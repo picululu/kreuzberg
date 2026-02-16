@@ -557,6 +557,17 @@ export interface ExtractedKeyword {
 }
 
 /**
+ * Warning from a post-processor during extraction.
+ */
+export interface ProcessingWarning {
+	/** Name of the post-processor that produced the warning */
+	source: string;
+
+	/** Warning message */
+	message: string;
+}
+
+/**
  * Page tracking and extraction configuration.
  *
  * Controls how pages/slides/sheets are extracted and tracked in the document.
@@ -1167,8 +1178,14 @@ export interface ExtractionResult {
 	/** Per-page content when page extraction is enabled, null otherwise. Each item contains page number, content, tables, and images. */
 	pages?: PageContent[] | null;
 
-	/** Extracted keywords when keyword extraction is enabled, null otherwise */
-	keywords?: ExtractedKeyword[] | null;
+	/** Extracted keywords when keyword extraction is enabled, undefined otherwise */
+	extractedKeywords?: ExtractedKeyword[];
+
+	/** Quality score when quality processing is enabled, undefined otherwise */
+	qualityScore?: number;
+
+	/** Processing warnings from post-processors */
+	processingWarnings?: ProcessingWarning[];
 
 	/** Granular OCR elements (words, lines, blocks) when OCR element extraction is enabled, null otherwise */
 	ocrElements?: OcrElement[] | null;
