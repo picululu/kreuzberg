@@ -129,6 +129,7 @@ pub fn process_table(content: &str, output: &mut String, tables: &mut Vec<Table>
             cells: rows,
             markdown: markdown.clone(),
             page_number: 1,
+            bounding_box: None,
         };
         tables.push(table);
     }

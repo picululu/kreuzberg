@@ -249,6 +249,18 @@ fn split_chars_by_columns<'a>(chars: &'a [CharData], columns: &[ColumnRegion]) -
 ///
 /// A `Result<String>` containing the full markdown text of the document.
 pub fn render_document_as_markdown(document: &PdfDocument, k_clusters: usize) -> Result<String> {
+    render_document_as_markdown_with_tables(document, k_clusters, &[])
+}
+
+/// Render a PDF document as markdown with inline table embedding.
+///
+/// Tables with bounding boxes are inserted at their correct vertical position,
+/// and characters overlapping table regions are filtered to avoid duplication.
+pub fn render_document_as_markdown_with_tables(
+    document: &PdfDocument,
+    k_clusters: usize,
+    tables: &[crate::types::Table],
+) -> Result<String> {
     let pages = document.pages();
     let page_count = pages.len();
 
@@ -259,8 +271,33 @@ pub fn render_document_as_markdown(document: &PdfDocument, k_clusters: usize) ->
         let page = pages.get(i).map_err(|e| {
             crate::pdf::error::PdfError::TextExtractionFailed(format!("Failed to get page {}: {:?}", i, e))
         })?;
-        let chars = extract_chars_with_fonts(&page)?;
-        page_dimensions.push((page.width().value, page.height().value));
+        let mut chars = extract_chars_with_fonts(&page)?;
+        let (page_w, page_h) = (page.width().value, page.height().value);
+        page_dimensions.push((page_w, page_h));
+
+        // Filter out characters that fall within table bounding boxes on this page
+        let page_tables: Vec<&crate::types::Table> =
+            tables.iter().filter(|t| t.page_number == (i as usize) + 1).collect();
+        if !page_tables.is_empty() {
+            chars.retain(|ch| {
+                !page_tables.iter().any(|t| {
+                    if let Some(ref bbox) = t.bounding_box {
+                        // CharData uses PDF coordinates (baseline_y with y=0 at bottom).
+                        // BoundingBox uses PDF coordinates (y0=bottom, y1=top).
+                        // Use center-point containment to avoid edge cases where
+                        // characters partially overlap the bounding box boundary.
+                        let char_center_x = ch.x + ch.width / 2.0;
+                        char_center_x >= bbox.x0 as f32
+                            && char_center_x <= bbox.x1 as f32
+                            && ch.baseline_y >= bbox.y0 as f32
+                            && ch.baseline_y <= bbox.y1 as f32
+                    } else {
+                        false
+                    }
+                })
+            });
+        }
+
         all_page_chars.push(chars);
     }
 
@@ -329,8 +366,8 @@ pub fn render_document_as_markdown(document: &PdfDocument, k_clusters: usize) ->
         all_page_paragraphs.push(page_paragraphs);
     }
 
-    // Stage 4: Assemble markdown
-    Ok(assemble_markdown(all_page_paragraphs))
+    // Stage 4: Assemble markdown with inline tables
+    Ok(assemble_markdown_with_tables(all_page_paragraphs, tables))
 }
 
 /// Returns true if the character is a CJK ideograph, Hiragana, Katakana, or Hangul.
@@ -808,6 +845,181 @@ fn assemble_markdown(pages: Vec<Vec<PdfParagraph>>) -> String {
     }
 
     output
+}
+
+/// Assemble markdown from paragraphs with inline table insertion.
+///
+/// Tables are inserted at their vertical position relative to surrounding paragraphs.
+/// For tables without bounding boxes, they are appended at the end of their page.
+fn assemble_markdown_with_tables(pages: Vec<Vec<PdfParagraph>>, tables: &[crate::types::Table]) -> String {
+    if tables.is_empty() || tables.iter().all(|t| t.bounding_box.is_none()) {
+        // No positioned tables, use simple assembly
+        return assemble_markdown(pages);
+    }
+
+    let mut output = String::new();
+
+    for (page_idx, paragraphs) in pages.iter().enumerate() {
+        let page_number = page_idx + 1;
+
+        if page_idx > 0 && !output.is_empty() {
+            output.push_str("\n\n");
+        }
+
+        // Collect tables for this page, split by positioned and unpositioned
+        let page_tables: Vec<&crate::types::Table> = tables.iter().filter(|t| t.page_number == page_number).collect();
+
+        let positioned_tables: Vec<&crate::types::Table> = page_tables
+            .iter()
+            .filter(|t| t.bounding_box.is_some())
+            .copied()
+            .collect();
+
+        let unpositioned_tables: Vec<&crate::types::Table> = page_tables
+            .iter()
+            .filter(|t| t.bounding_box.is_none())
+            .copied()
+            .collect();
+
+        if positioned_tables.is_empty() {
+            // No positioned tables on this page, render normally then append unpositioned
+            for (para_idx, para) in paragraphs.iter().enumerate() {
+                if para_idx > 0 {
+                    output.push_str("\n\n");
+                }
+                render_paragraph_to_output(para, &mut output);
+            }
+            for table in &unpositioned_tables {
+                output.push_str("\n\n");
+                output.push_str(table.markdown.trim());
+            }
+        } else {
+            // Build a unified list: paragraphs (with y-position) + tables (with y-position)
+            // Sort by y-position descending (top of page first, since PDF y increases upward)
+            enum PageItem<'a> {
+                Paragraph(&'a PdfParagraph),
+                Table(&'a crate::types::Table),
+            }
+
+            let mut items: Vec<(f32, PageItem)> = Vec::new();
+
+            for para in paragraphs {
+                // Use the first line's baseline_y as the paragraph's y position
+                let y = para.lines.first().map(|l| l.baseline_y).unwrap_or(0.0);
+                items.push((y, PageItem::Paragraph(para)));
+            }
+
+            for table in &positioned_tables {
+                // Use the table's top y-coordinate (y1 in PDF coords = top of table)
+                let y = table.bounding_box.as_ref().map(|b| b.y1 as f32).unwrap_or(0.0);
+                items.push((y, PageItem::Table(table)));
+            }
+
+            // Sort by y descending (top-of-page first in PDF coords)
+            items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            let mut first = true;
+            for (_, item) in &items {
+                if !first {
+                    output.push_str("\n\n");
+                }
+                first = false;
+                match item {
+                    PageItem::Paragraph(para) => render_paragraph_to_output(para, &mut output),
+                    PageItem::Table(table) => output.push_str(table.markdown.trim()),
+                }
+            }
+
+            // Append unpositioned tables at the end
+            for table in &unpositioned_tables {
+                output.push_str("\n\n");
+                output.push_str(table.markdown.trim());
+            }
+        }
+    }
+
+    output
+}
+
+/// Render a single paragraph to the output string.
+fn render_paragraph_to_output(para: &PdfParagraph, output: &mut String) {
+    if let Some(level) = para.heading_level {
+        let prefix = "#".repeat(level as usize);
+        let text = join_line_texts(&para.lines);
+        output.push_str(&prefix);
+        output.push(' ');
+        output.push_str(&text);
+    } else if para.is_list_item {
+        for (line_idx, line) in para.lines.iter().enumerate() {
+            if line_idx > 0 {
+                output.push('\n');
+            }
+            let text = render_line_with_inline_markup(line);
+            output.push_str(&text);
+        }
+    } else {
+        let text = render_paragraph_with_inline_markup(para);
+        output.push_str(&text);
+    }
+}
+
+/// Inject image placeholders into markdown based on page numbers.
+///
+/// Appends image placeholders at the end of the markdown, grouped by page number.
+/// Each placeholder references the image by its `image_index` for stable identification.
+/// If the image has OCR results, includes a blockquote with the OCR text.
+pub fn inject_image_placeholders(markdown: &str, images: &[crate::types::ExtractedImage]) -> String {
+    if images.is_empty() {
+        return markdown.to_string();
+    }
+
+    // Group images by page number
+    let mut images_by_page: std::collections::BTreeMap<usize, Vec<(usize, &crate::types::ExtractedImage)>> =
+        std::collections::BTreeMap::new();
+    for (idx, img) in images.iter().enumerate() {
+        let page = img.page_number.unwrap_or(0);
+        images_by_page.entry(page).or_default().push((idx, img));
+    }
+
+    // If no images have page numbers, append all at the end
+    if images_by_page.keys().all(|&k| k == 0) {
+        let mut result = markdown.to_string();
+        for img in images {
+            let ii = img.image_index;
+            result.push_str(&format!("\n\n![Image {}](embedded:i{})", ii, ii));
+            if let Some(ref ocr) = img.ocr_result {
+                let text = ocr.content.trim();
+                if !text.is_empty() {
+                    result.push_str(&format!("\n> *Image text: {}*", text));
+                }
+            }
+        }
+        return result;
+    }
+
+    // Append image placeholders grouped by page, in page order
+    let mut result = markdown.to_string();
+
+    for (&page, page_images) in &images_by_page {
+        for (_idx, img) in page_images {
+            let ii = img.image_index;
+            let label = if page > 0 {
+                format!("![Image {} (page {})](embedded:p{}_i{})", ii, page, page, ii)
+            } else {
+                format!("![Image {}](embedded:i{})", ii, ii)
+            };
+            result.push_str("\n\n");
+            result.push_str(&label);
+            if let Some(ref ocr) = img.ocr_result {
+                let text = ocr.content.trim();
+                if !text.is_empty() {
+                    result.push_str(&format!("\n> *Image text: {}*", text));
+                }
+            }
+        }
+    }
+
+    result
 }
 
 /// Join lines into a single string (no inline markup).
@@ -1607,5 +1819,196 @@ mod tests {
         assert_eq!(join_words_cjk_aware(&["hello"]), "hello");
         // Empty
         assert_eq!(join_words_cjk_aware(&[]), "");
+    }
+
+    #[test]
+    fn test_inject_image_placeholders_empty() {
+        let md = "# Hello\n\nSome text.";
+        let result = inject_image_placeholders(md, &[]);
+        assert_eq!(result, md);
+    }
+
+    #[test]
+    fn test_inject_image_placeholders_uses_image_index() {
+        use bytes::Bytes;
+        use std::borrow::Cow;
+
+        let md = "# Page 1 content";
+        let images = vec![crate::types::ExtractedImage {
+            data: Bytes::from_static(&[0xFF]),
+            format: Cow::Borrowed("jpeg"),
+            image_index: 5,
+            page_number: Some(1),
+            width: None,
+            height: None,
+            colorspace: None,
+            bits_per_component: None,
+            is_mask: false,
+            description: None,
+            ocr_result: None,
+            bounding_box: None,
+        }];
+        let result = inject_image_placeholders(md, &images);
+        // Should use image_index (5), not enumeration index (0)
+        assert!(
+            result.contains("embedded:p1_i5"),
+            "Should use image_index 5, got: {}",
+            result
+        );
+        assert!(
+            result.contains("![Image 5 (page 1)]"),
+            "Should use image_index 5, got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_inject_image_placeholders_with_ocr() {
+        use bytes::Bytes;
+        use std::borrow::Cow;
+
+        let md = "Content here";
+        let images = vec![crate::types::ExtractedImage {
+            data: Bytes::from_static(&[0x89]),
+            format: Cow::Borrowed("png"),
+            image_index: 0,
+            page_number: None,
+            width: None,
+            height: None,
+            colorspace: None,
+            bits_per_component: None,
+            is_mask: false,
+            description: None,
+            ocr_result: Some(Box::new(crate::types::ExtractionResult {
+                content: "OCR detected text".to_string(),
+                mime_type: Cow::Borrowed("text/plain"),
+                metadata: crate::types::Metadata::default(),
+                tables: vec![],
+                detected_languages: None,
+                chunks: None,
+                images: None,
+                djot_content: None,
+                pages: None,
+                elements: None,
+                ocr_elements: None,
+                document: None,
+                #[cfg(any(feature = "keywords-yake", feature = "keywords-rake"))]
+                extracted_keywords: None,
+                quality_score: None,
+                processing_warnings: Vec::new(),
+            })),
+            bounding_box: None,
+        }];
+        let result = inject_image_placeholders(md, &images);
+        assert!(
+            result.contains("Image text: OCR detected text"),
+            "Should include OCR text, got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_assemble_markdown_with_tables_no_tables() {
+        let paragraphs = vec![vec![PdfParagraph {
+            lines: vec![PdfLine {
+                words: vec![PdfWord {
+                    text: "Hello".to_string(),
+                    x_start: 0.0,
+                    x_end: 30.0,
+                    baseline_y: 700.0,
+                    font_size: 12.0,
+                    is_bold: false,
+                    is_italic: false,
+                }],
+                baseline_y: 700.0,
+                y_top: 688.0,
+                y_bottom: 700.0,
+                dominant_font_size: 12.0,
+                is_bold: false,
+                is_italic: false,
+            }],
+            dominant_font_size: 12.0,
+            heading_level: None,
+            is_bold: false,
+            is_italic: false,
+            is_list_item: false,
+        }]];
+        let result = assemble_markdown_with_tables(paragraphs, &[]);
+        assert_eq!(result, "Hello");
+    }
+
+    #[test]
+    fn test_assemble_markdown_with_tables_interleaves() {
+        // Two paragraphs and a table between them (by y-position)
+        let paragraphs = vec![vec![
+            PdfParagraph {
+                lines: vec![PdfLine {
+                    words: vec![PdfWord {
+                        text: "Top".to_string(),
+                        x_start: 0.0,
+                        x_end: 30.0,
+                        baseline_y: 700.0,
+                        font_size: 12.0,
+                        is_bold: false,
+                        is_italic: false,
+                    }],
+                    baseline_y: 700.0,
+                    y_top: 688.0,
+                    y_bottom: 700.0,
+                    dominant_font_size: 12.0,
+                    is_bold: false,
+                    is_italic: false,
+                }],
+                dominant_font_size: 12.0,
+                heading_level: None,
+                is_bold: false,
+                is_italic: false,
+                is_list_item: false,
+            },
+            PdfParagraph {
+                lines: vec![PdfLine {
+                    words: vec![PdfWord {
+                        text: "Bottom".to_string(),
+                        x_start: 0.0,
+                        x_end: 50.0,
+                        baseline_y: 200.0,
+                        font_size: 12.0,
+                        is_bold: false,
+                        is_italic: false,
+                    }],
+                    baseline_y: 200.0,
+                    y_top: 188.0,
+                    y_bottom: 200.0,
+                    dominant_font_size: 12.0,
+                    is_bold: false,
+                    is_italic: false,
+                }],
+                dominant_font_size: 12.0,
+                heading_level: None,
+                is_bold: false,
+                is_italic: false,
+                is_list_item: false,
+            },
+        ]];
+
+        let tables = vec![crate::types::Table {
+            cells: vec![vec!["A".to_string(), "B".to_string()]],
+            markdown: "| A | B |".to_string(),
+            page_number: 1,
+            bounding_box: Some(crate::types::BoundingBox {
+                x0: 50.0,
+                y0: 400.0,
+                x1: 500.0,
+                y1: 500.0, // y1=500 is between Top(700) and Bottom(200)
+            }),
+        }];
+
+        let result = assemble_markdown_with_tables(paragraphs, &tables);
+        // Order should be: Top, Table, Bottom
+        let top_pos = result.find("Top").unwrap();
+        let table_pos = result.find("| A | B |").unwrap();
+        let bottom_pos = result.find("Bottom").unwrap();
+        assert!(top_pos < table_pos, "Top should come before table");
+        assert!(table_pos < bottom_pos, "Table should come before Bottom");
     }
 }

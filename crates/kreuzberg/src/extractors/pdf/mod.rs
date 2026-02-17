@@ -247,19 +247,13 @@ impl DocumentExtractor for PdfExtractor {
         // The markdown was rendered during the first document load to avoid redundant PDF parsing.
         // OCR results already produce markdown via the hOCR path, so this only applies
         // when native text extraction was used and markdown output was requested.
+        // Note: we defer consumption of pre_rendered_markdown until after images are available
+        // so that we can inject image placeholders into it before finalizing the text.
         #[cfg(feature = "pdf")]
-        let (text, used_pdf_markdown) = if !used_ocr {
-            if let Some(md) = pre_rendered_markdown {
-                (md, true)
-            } else {
-                (text, false)
-            }
-        } else {
-            (text, false)
-        };
+        let use_pdf_markdown = !used_ocr && pre_rendered_markdown.is_some();
 
         #[cfg(not(feature = "pdf"))]
-        let used_pdf_markdown = false;
+        let use_pdf_markdown = false;
 
         #[cfg(feature = "pdf")]
         if let Some(ref page_cfg) = config.pages
@@ -301,6 +295,7 @@ impl DocumentExtractor for PdfExtractor {
                                 is_mask: false,
                                 description: None,
                                 ocr_result: None,
+                                bounding_box: None,
                             }
                         })
                         .collect(),
@@ -329,6 +324,31 @@ impl DocumentExtractor for PdfExtractor {
         } else {
             None
         };
+
+        // Finalize text: apply pre-rendered markdown (with image placeholder injection) if available.
+        // Images (including OCR) are now fully resolved, so we can inject placeholders.
+        #[cfg(feature = "pdf")]
+        let (text, used_pdf_markdown) = if use_pdf_markdown {
+            if let Some(md) = pre_rendered_markdown {
+                let final_md = if let Some(ref imgs) = images {
+                    if !imgs.is_empty() {
+                        crate::pdf::markdown::inject_image_placeholders(&md, imgs)
+                    } else {
+                        md
+                    }
+                } else {
+                    md
+                };
+                (final_md, true)
+            } else {
+                (text, false)
+            }
+        } else {
+            (text, false)
+        };
+
+        #[cfg(not(feature = "pdf"))]
+        let used_pdf_markdown = false;
 
         let final_pages = assign_tables_and_images_to_pages(page_contents, &tables, images.as_deref().unwrap_or(&[]));
 

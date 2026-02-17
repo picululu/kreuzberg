@@ -1097,5 +1097,6 @@ pub(crate) fn php_array_to_table(arr: &ext_php_rs::types::ZendHashTable) -> PhpR
         cells,
         markdown,
         page_number,
+        bounding_box: None,
     })
 }

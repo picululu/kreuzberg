@@ -384,6 +384,7 @@ mod tests {
             cells: vec![vec!["A".to_string(), "B".to_string()]],
             markdown: "| A | B |".to_string(),
             page_number: 0,
+            bounding_box: None,
         };
 
         let mut result = ExtractionResult {

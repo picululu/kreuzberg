@@ -192,6 +192,7 @@ impl MarkdownExtractor {
             is_mask: false,
             description: None,
             ocr_result: None,
+            bounding_box: None,
         })
     }
 
@@ -255,6 +256,7 @@ impl MarkdownExtractor {
                             cells,
                             markdown,
                             page_number: idx + 1,
+                            bounding_box: None,
                         });
                         table_index += 1;
                     }

@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bold/italic detection via font name fallback**: When PDF font descriptor flags don't indicate bold/italic, the extractor checks font names for "Bold"/"Italic"/"Oblique" substrings and font weight >= 700 as secondary signals.
 - **musl/Alpine Linux native builds for Elixir, Java, and C#**: New Docker-based CI jobs build native libraries (`libkreuzberg_rustler.so`, `libkreuzberg_ffi.so`) targeting `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`. Enables instant install on Alpine Linux and musl-based distributions without compiling from source.
 - **Pre-compiled platform-specific Ruby gems**: The publish workflow now ships pre-compiled native gems for `x86_64-linux`, `aarch64-linux`, `arm64-darwin`, and `x64-mingw-ucrt`, eliminating the 30+ minute compile-from-source on `gem install kreuzberg`. A fallback source gem is still published for unsupported platforms.
+- **`bounding_box: Option<BoundingBox>` field on `Table` struct**: Added spatial positioning data for table extraction, enabling precise table layout reconstruction. Computed from character positions during PDF table detection.
+- **`bounding_box: Option<BoundingBox>` field on `ExtractedImage` struct**: Added spatial positioning data for extracted images, enabling image layout reconstruction in document pipelines.
+- **Inline table embedding in PDF markdown output**: Tables are inserted at correct vertical position within markdown content instead of being appended at the end. Position determined by bounding box `y0` coordinate.
+- **Image placeholder injection in PDF markdown output**: Image references are inserted with OCR text as blockquotes at correct vertical position matching the image's bounding box.
+- **`render_document_as_markdown_with_tables()` function**: New public function for table-aware markdown rendering that embeds tables inline at correct positions and injects image placeholders. Used internally by `render_document_as_markdown()`.
+- **`inject_image_placeholders()` function**: New post-processing function for markdown that injects `![Image description]()` placeholders and OCR text blockquotes at correct vertical positions in the content.
 
 ### Fixed
 
@@ -47,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Python `.pyi` stub missing `extraction_duration_ms`**: Added `extraction_duration_ms: int | None` to the `Metadata` TypedDict in `_internal_bindings.pyi`.
 
 ### Changed
+
+- **PDF table extraction now computes bounding boxes from character positions**: Table bounding box is calculated as the aggregate bounds of all constituent character positions, enabling precise spatial positioning in downstream rendering pipelines.
+- **`render_document_as_markdown()` now delegates to `render_document_as_markdown_with_tables()` with empty tables**: The original function is now a thin wrapper for backward compatibility, with all table-aware rendering logic centralized in the new `_with_tables()` variant.
 
 - **PaddleOCR recognition models upgraded to PP-OCRv5**: Upgraded arabic, devanagari, tamil, and telugu recognition models from PP-OCRv3 to PP-OCRv5 for improved accuracy. All 11 script families now use PP-OCRv5 models.
 - **PDFium upgraded to chromium/7678**: Upgraded PDFium binary version from 7578 to the latest release (chromium/7678, Feb 2026) across all CI workflows, Docker images, and task configuration. C API is fully backward-compatible with existing bindings.

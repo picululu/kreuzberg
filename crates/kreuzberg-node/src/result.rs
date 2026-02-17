@@ -535,6 +535,7 @@ impl TryFrom<JsExtractionResult> for RustExtractionResult {
                     is_mask: img.is_mask,
                     description: img.description,
                     ocr_result,
+                    bounding_box: None,
                 });
             }
             Some(rust_images)
@@ -599,6 +600,7 @@ impl TryFrom<JsExtractionResult> for RustExtractionResult {
                     cells: t.cells,
                     markdown: t.markdown,
                     page_number: t.page_number as usize,
+                    bounding_box: None,
                 })
                 .collect(),
             detected_languages: val.detected_languages,
