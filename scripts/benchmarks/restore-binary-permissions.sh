@@ -17,3 +17,10 @@ fi
 
 chmod +x "$BINARY_PATH"
 echo "✓ Restored executable permissions on: $BINARY_PATH"
+
+# Also restore kreuzberg-extract if present (used by kreuzberg-rust and kreuzberg-rust-paddle adapters)
+EXTRACT_BINARY="$REPO_ROOT/target/release/kreuzberg-extract"
+if [ -f "$EXTRACT_BINARY" ]; then
+  chmod +x "$EXTRACT_BINARY"
+  echo "✓ Restored executable permissions on: $EXTRACT_BINARY"
+fi

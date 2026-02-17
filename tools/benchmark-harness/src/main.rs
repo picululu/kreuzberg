@@ -272,6 +272,21 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // Register kreuzberg-rust-paddle adapter (PaddleOCR backend)
+            if should_init("kreuzberg-rust-paddle") {
+                use benchmark_harness::adapters::create_rust_paddle_subprocess_adapter;
+                match create_rust_paddle_subprocess_adapter(ocr) {
+                    Ok(adapter) => {
+                        registry.register(Arc::new(adapter))?;
+                        eprintln!("[adapter] ✓ kreuzberg-rust-paddle (subprocess mode)");
+                        kreuzberg_count += 1;
+                    }
+                    Err(err) => {
+                        eprintln!("[adapter] ✗ kreuzberg-rust-paddle (initialization failed: {})", err);
+                    }
+                }
+            }
+
             use benchmark_harness::adapters::{
                 create_csharp_adapter, create_elixir_adapter, create_go_adapter, create_java_adapter,
                 create_node_adapter, create_php_adapter, create_python_adapter, create_ruby_adapter,
@@ -288,7 +303,7 @@ async fn main() -> Result<()> {
             try_register!("kreuzberg-php", || create_php_adapter(ocr), kreuzberg_count);
             try_register!("kreuzberg-elixir", || create_elixir_adapter(ocr), kreuzberg_count);
 
-            let total_requested = if frameworks.is_empty() { 10 } else { frameworks.len() };
+            let total_requested = if frameworks.is_empty() { 11 } else { frameworks.len() };
             eprintln!(
                 "[adapter] Kreuzberg bindings: {}/{} available",
                 kreuzberg_count, total_requested

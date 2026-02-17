@@ -117,6 +117,9 @@ jobs:
           crate-name: kreuzberg-ffi
           build-profile: release
 
+      - name: Build kreuzberg-extract binary
+        run: cargo build --release -p benchmark-harness --bin kreuzberg-extract
+
       - name: Log disk space before artifact upload
         run: scripts/ci/validate/show-disk-space.sh "Disk space before artifact upload"
 
@@ -126,6 +129,7 @@ jobs:
           name: benchmarks-target
           path: |
             target/release/benchmark-harness
+            target/release/kreuzberg-extract
             target/release/libkreuzberg_ffi.so
             target/release/libkreuzberg_ffi.dylib
             target/release/kreuzberg_ffi.dll
@@ -203,6 +207,71 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmarks-kreuzberg-rust-${{ matrix.mode }}-${{ github.run_id }}
+          path: benchmark-results/
+          retention-days: 30
+
+  bench-native-paddle:
+    name: kreuzberg-rust-paddle (${{ matrix.mode }})
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [single-file, batch]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Free disk space
+        run: scripts/ci/benchmarks/free-disk-space.sh
+
+      - name: Install system dependencies
+        uses: ./.github/actions/install-system-deps
+
+      - name: Setup OpenSSL
+        uses: ./.github/actions/setup-openssl
+
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key-prefix: benchmarks-native-paddle
+          use-sccache: 'true'
+          report-stats: 'true'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.setup.outputs.artifact-name }}
+          path: target/release
+
+      - name: Restore benchmark binary permissions
+        run: scripts/benchmarks/restore-binary-permissions.sh
+
+      - name: Setup ONNX Runtime
+        uses: ./.github/actions/setup-onnx-runtime
+        with:
+          ort-version: ${{ env.ORT_VERSION }}
+
+      - name: Setup PaddleOCR models
+        uses: ./.github/actions/setup-paddle-ocr-models
+
+      - name: Run benchmark
+        env:
+          FRAMEWORK: kreuzberg-rust-paddle
+          MODE: ${{ matrix.mode }}
+          ITERATIONS: ${{ env.ITERATIONS }}
+          TIMEOUT: ${{ github.event.inputs.timeout }}
+        run: scripts/benchmarks/run-benchmark.sh
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-kreuzberg-rust-paddle-${{ matrix.mode }}-${{ github.run_id }}
           path: benchmark-results/
           retention-days: 30
 
@@ -1414,7 +1483,7 @@ jobs:
 
   aggregate-and-publish:
     name: Aggregate & Release Results
-    needs: [setup, bench-native, bench-python, bench-node, bench-wasm, bench-ruby, bench-go, bench-java, bench-csharp, bench-elixir, bench-php, bench-docling, bench-markitdown, bench-pandoc, bench-unstructured, bench-tika, bench-pymupdf4llm, bench-pdfplumber, bench-mineru]
+    needs: [setup, bench-native, bench-native-paddle, bench-python, bench-node, bench-wasm, bench-ruby, bench-go, bench-java, bench-csharp, bench-elixir, bench-php, bench-docling, bench-markitdown, bench-pandoc, bench-unstructured, bench-tika, bench-pymupdf4llm, bench-pdfplumber, bench-mineru]
     runs-on: ubuntu-latest
     if: ${{ always() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
     permissions:
@@ -1540,6 +1609,7 @@ jobs:
           # Define expected framework:mode combinations
           EXPECTED_FRAMEWORKS=(
             "kreuzberg-rust:single" "kreuzberg-rust:batch"
+            "kreuzberg-rust-paddle:single" "kreuzberg-rust-paddle:batch"
             "kreuzberg-python:single" "kreuzberg-python:batch"
             "kreuzberg-node:single" "kreuzberg-node:batch"
             "kreuzberg-wasm:single" "kreuzberg-wasm:batch"

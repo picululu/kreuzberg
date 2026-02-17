@@ -362,6 +362,29 @@ pub fn create_rust_subprocess_adapter(ocr_enabled: bool) -> Result<SubprocessAda
     ))
 }
 
+/// Create Rust subprocess adapter with PaddleOCR backend (persistent server mode)
+///
+/// Same as `create_rust_subprocess_adapter` but uses PaddleOCR instead of Tesseract.
+/// Registered as framework name `kreuzberg-rust-paddle` for separate aggregation.
+pub fn create_rust_paddle_subprocess_adapter(ocr_enabled: bool) -> Result<SubprocessAdapter> {
+    let binary_path = find_kreuzberg_extract_binary()?;
+
+    let mut args = vec![ocr_flag(ocr_enabled)];
+    if ocr_enabled {
+        args.push("--ocr-backend".to_string());
+        args.push("paddleocr".to_string());
+    }
+
+    let supported_formats = get_kreuzberg_supported_formats();
+    Ok(SubprocessAdapter::with_persistent_mode(
+        "kreuzberg-rust-paddle",
+        binary_path,
+        args,
+        vec![],
+        supported_formats,
+    ))
+}
+
 /// Find the kreuzberg-extract binary
 fn find_kreuzberg_extract_binary() -> Result<PathBuf> {
     // Check in target/release first
