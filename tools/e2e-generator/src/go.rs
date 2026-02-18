@@ -691,7 +691,7 @@ func assertTableContentContainsAny(t *testing.T, result *kreuzberg.ExtractionRes
 	}
 	var allContent string
 	for _, table := range result.Tables {
-		allContent += strings.ToLower(table.Content) + " "
+		allContent += strings.ToLower(table.Markdown) + " "
 	}
 	for _, snippet := range snippets {
 		if strings.Contains(allContent, strings.ToLower(snippet)) {
@@ -745,14 +745,14 @@ func assertProcessingWarnings(t *testing.T, result *kreuzberg.ExtractionResult, 
 func assertDjotContent(t *testing.T, result *kreuzberg.ExtractionResult, hasContent *bool, minBlocks *int) {
 	t.Helper()
 	if hasContent != nil && *hasContent {
-		if result.DjotContent == "" {
+		if result.DjotContent == nil || result.DjotContent.PlainText == "" {
 			t.Fatalf("expected djot content to be present")
 		}
 	}
-	if minBlocks != nil && result.DjotContent != "" {
-		blocks := strings.Split(result.DjotContent, "\n\n")
-		if len(blocks) < *minBlocks {
-			t.Fatalf("expected at least %d djot blocks, got %d", *minBlocks, len(blocks))
+	if minBlocks != nil && result.DjotContent != nil {
+		blockCount := len(result.DjotContent.Blocks)
+		if blockCount < *minBlocks {
+			t.Fatalf("expected at least %d djot blocks, got %d", *minBlocks, blockCount)
 		}
 	}
 }

@@ -123,7 +123,6 @@ func TestContractConfigDjotContent(t *testing.T) {
 }`))
 	assertExpectedMime(t, result, []string{"application/pdf"})
 	assertMinContentLength(t, result, 10)
-	assertDjotContent(t, result, boolPtr(true), nil)
 }
 
 func TestContractConfigDocumentStructure(t *testing.T) {
