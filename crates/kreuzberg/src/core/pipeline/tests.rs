@@ -3,7 +3,7 @@
 use super::*;
 use crate::core::config::OutputFormat;
 use crate::types::Metadata;
-use lazy_static::lazy_static;
+use serial_test::serial;
 use std::borrow::Cow;
 
 const VALIDATION_MARKER_KEY: &str = "registry_validation_marker";
@@ -12,11 +12,8 @@ const QUALITY_VALIDATION_MARKER: &str = "quality_validation_test";
 const POSTPROCESSOR_VALIDATION_MARKER: &str = "postprocessor_validation_test";
 const ORDER_VALIDATION_MARKER: &str = "order_validation_test";
 
-lazy_static! {
-    static ref REGISTRY_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
-}
-
 #[tokio::test]
+#[serial]
 async fn test_run_pipeline_basic() {
     let mut result = ExtractionResult {
         content: "test".to_string(),
@@ -53,6 +50,7 @@ async fn test_run_pipeline_basic() {
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(feature = "quality")]
 async fn test_pipeline_with_quality_processing() {
     let result = ExtractionResult {
@@ -83,6 +81,7 @@ async fn test_pipeline_with_quality_processing() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_pipeline_without_quality_processing() {
     let result = ExtractionResult {
         content: "test".to_string(),
@@ -116,6 +115,7 @@ async fn test_pipeline_without_quality_processing() {
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(feature = "chunking")]
 async fn test_pipeline_with_chunking() {
     let result = ExtractionResult {
@@ -155,6 +155,7 @@ async fn test_pipeline_with_chunking() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_pipeline_without_chunking() {
     let result = ExtractionResult {
         content: "test".to_string(),
@@ -188,6 +189,7 @@ async fn test_pipeline_without_chunking() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_pipeline_preserves_metadata() {
     use ahash::AHashMap;
     let mut additional = AHashMap::new();
@@ -235,6 +237,7 @@ async fn test_pipeline_preserves_metadata() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_pipeline_preserves_tables() {
     use crate::types::Table;
 
@@ -277,9 +280,8 @@ async fn test_pipeline_preserves_tables() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_pipeline_empty_content() {
-    let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
-
     {
         let registry = crate::plugins::registry::get_post_processor_registry();
         registry.write().unwrap().shutdown_all().unwrap();
@@ -309,13 +311,12 @@ async fn test_pipeline_empty_content() {
     };
     let config = ExtractionConfig::default();
 
-    drop(_guard);
-
     let processed = run_pipeline(result, &config).await.unwrap();
     assert_eq!(processed.content, "");
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(feature = "chunking")]
 async fn test_pipeline_with_all_features() {
     let result = ExtractionResult {
@@ -355,11 +356,9 @@ async fn test_pipeline_with_all_features() {
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(any(feature = "keywords-yake", feature = "keywords-rake"))]
-#[ignore = "Requires test isolation - run with --test-threads=1 or individually with --include-ignored"]
-#[allow(clippy::await_holding_lock)]
 async fn test_pipeline_with_keyword_extraction() {
-    let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
     crate::plugins::registry::get_validator_registry()
         .write()
         .unwrap()
@@ -371,7 +370,9 @@ async fn test_pipeline_with_keyword_extraction() {
         .shutdown_all()
         .unwrap();
 
+    // Register keyword processor directly (bypasses Lazy which only runs once per process)
     let _ = crate::keywords::register_keyword_processor();
+    clear_processor_cache().unwrap();
 
     let result = ExtractionResult {
         content: r#"
@@ -427,11 +428,9 @@ Natural language processing enables computers to understand human language.
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(any(feature = "keywords-yake", feature = "keywords-rake"))]
 async fn test_pipeline_without_keyword_config() {
-    {
-        let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
-    }
     let result = ExtractionResult {
         content: "Machine learning and artificial intelligence.".to_string(),
         mime_type: Cow::Borrowed("text/plain"),
@@ -462,9 +461,9 @@ async fn test_pipeline_without_keyword_config() {
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(any(feature = "keywords-yake", feature = "keywords-rake"))]
 async fn test_pipeline_keyword_extraction_short_content() {
-    let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
     crate::plugins::registry::get_validator_registry()
         .write()
         .unwrap()
@@ -506,14 +505,13 @@ async fn test_pipeline_keyword_extraction_short_content() {
         ..Default::default()
     };
 
-    drop(_guard);
-
     let processed = run_pipeline(result, &config).await.unwrap();
 
     assert!(!processed.metadata.additional.contains_key("keywords"));
 }
 
 #[tokio::test]
+#[serial]
 async fn test_postprocessor_runs_before_validator() {
     use crate::plugins::{Plugin, PostProcessor, ProcessingStage, Validator};
     use async_trait::async_trait;
@@ -600,7 +598,6 @@ async fn test_postprocessor_runs_before_validator() {
     let pp_registry = crate::plugins::registry::get_post_processor_registry();
     let val_registry = crate::plugins::registry::get_validator_registry();
 
-    let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
     clear_processor_cache().unwrap();
     pp_registry.write().unwrap().shutdown_all().unwrap();
     val_registry.write().unwrap().shutdown_all().unwrap();
@@ -616,7 +613,6 @@ async fn test_postprocessor_runs_before_validator() {
         registry.register(Arc::new(TestValidator)).unwrap();
     }
 
-    // Clear the cache after registering new processors so it rebuilds with the test processors
     clear_processor_cache().unwrap();
 
     let mut result = ExtractionResult {
@@ -652,7 +648,6 @@ async fn test_postprocessor_runs_before_validator() {
         }),
         ..Default::default()
     };
-    drop(_guard);
 
     let processed = run_pipeline(result, &config).await;
 
@@ -669,9 +664,9 @@ async fn test_postprocessor_runs_before_validator() {
 }
 
 #[tokio::test]
+#[serial]
 #[cfg(feature = "quality")]
 async fn test_quality_processing_runs_before_validator() {
-    let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
     use crate::plugins::{Plugin, Validator};
     use async_trait::async_trait;
     use std::sync::Arc;
@@ -750,8 +745,6 @@ async fn test_quality_processing_runs_before_validator() {
         ..Default::default()
     };
 
-    drop(_guard);
-
     let processed = run_pipeline(result, &config).await;
 
     {
@@ -763,6 +756,7 @@ async fn test_quality_processing_runs_before_validator() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_multiple_postprocessors_run_before_validator() {
     use crate::plugins::{Plugin, PostProcessor, ProcessingStage, Validator};
     use async_trait::async_trait;
@@ -906,7 +900,6 @@ async fn test_multiple_postprocessors_run_before_validator() {
 
     let pp_registry = crate::plugins::registry::get_post_processor_registry();
     let val_registry = crate::plugins::registry::get_validator_registry();
-    let _guard = REGISTRY_TEST_GUARD.lock().unwrap();
 
     pp_registry.write().unwrap().shutdown_all().unwrap();
     val_registry.write().unwrap().shutdown_all().unwrap();
@@ -946,7 +939,6 @@ async fn test_multiple_postprocessors_run_before_validator() {
     };
 
     let config = ExtractionConfig::default();
-    drop(_guard);
 
     let processed = run_pipeline(result, &config).await;
 
@@ -958,6 +950,7 @@ async fn test_multiple_postprocessors_run_before_validator() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_run_pipeline_with_output_format_plain() {
     let result = ExtractionResult {
         content: "test content".to_string(),
@@ -976,6 +969,7 @@ async fn test_run_pipeline_with_output_format_plain() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_run_pipeline_with_output_format_djot() {
     use crate::types::{BlockType, DjotContent, FormattedBlock, InlineElement, InlineType};
 
@@ -1020,6 +1014,7 @@ async fn test_run_pipeline_with_output_format_djot() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_run_pipeline_with_output_format_html() {
     let result = ExtractionResult {
         content: "test content".to_string(),
@@ -1041,6 +1036,7 @@ async fn test_run_pipeline_with_output_format_html() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_run_pipeline_applies_output_format_last() {
     // This test verifies that output format is applied after all other processing
     use crate::types::DjotContent;

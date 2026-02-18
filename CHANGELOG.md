@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ruby gem missing `sorbet-runtime` at runtime (#400)**: `sorbet-runtime` was listed as a development dependency in the gemspec but is required at runtime for `T::Struct` types. Promoted to a runtime dependency.
 - **E2e generator Ruby rubocop warnings**: The Ruby e2e generator emitted redundant `RSpec/DescribeClass` and `RSpec/ExampleLength` inline disable directives that rubocop autocorrect mangled into invalid syntax. Simplified to only disable `Metrics/BlockLength`.
 - **E2e generator TypeScript npm warnings**: Replaced `npx` with `pnpm exec` for running biome in the e2e generator, eliminating spurious warnings from pnpm-specific `.npmrc` settings.
+- **Tesseract TSV level mapping off-by-one**: OCR element hierarchy levels were incorrectly mapped — levels are 1=Page, 2=Block, 3=Paragraph, 4=Line, 5=Word. Fixed `parse_tsv_to_elements` to include word-level entries.
+- **OCR elements dropped in image OCR path**: `image_ocr.rs` hardcoded `ocr_elements` to `None` instead of passing through the elements parsed from Tesseract TSV output.
+- **DOCX extractor panic on multi-byte UTF-8 page boundaries (#401)**: Page break insertion used byte-index slicing on multi-byte UTF-8 content, causing panics. Fixed with char-boundary-safe insertion.
+- **Node.js `djot_content` field missing**: `JsExtractionResult` in kreuzberg-node was not mapping the `djot_content` field from Rust results, always returning `undefined`.
+- **E2e generator missing `mapPageConfig` and `mapHtmlOptions`**: TypeScript e2e test generator did not map page extraction or HTML formatting options from fixture configs, causing tests with those options to use defaults.
+- **Pipeline test race conditions**: Replaced manual `REGISTRY_TEST_GUARD` mutex with `#[serial]` from `serial_test`, fixing flaky failures in `test_pipeline_with_quality_processing`, `test_pipeline_with_all_features`, and `test_postprocessor_runs_before_validator` caused by global registry state pollution between parallel tests.
+- **`test_pipeline_with_keyword_extraction` permanently ignored**: Test was marked `#[ignore]` due to test isolation issues. Fixed the underlying problem — `Lazy` static prevented re-registration after `shutdown_all()` — by clearing the processor cache after re-registration.
 
 ---
 
