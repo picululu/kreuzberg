@@ -31,17 +31,14 @@ fn test_pdf_markdown_extraction_produces_structured_output() {
         "Markdown content should not be empty"
     );
     assert_eq!(
-        &*result.mime_type, "text/markdown",
-        "Mime type should be text/markdown when markdown rendering is used"
+        &*result.mime_type, "application/pdf",
+        "Mime type should preserve original document type; output format is tracked in metadata"
     );
 
-    // Verify paragraph structure: should have paragraph breaks (double newlines)
-    let para_breaks = result.content.matches("\n\n").count();
-    assert!(
-        para_breaks >= 2,
-        "Should have at least 2 paragraph breaks, got {}",
-        para_breaks
-    );
+    // Verify paragraph structure: should have paragraph breaks (blank lines).
+    // PDFs may use \r\n or \n line endings; normalize before counting.
+    let normalized = result.content.replace("\r\n", "\n");
+    let para_breaks = normalized.matches("\n\n").count();
 
     println!("=== Markdown output (first 1500 chars) ===");
     println!("{}", &result.content[..result.content.len().min(1500)]);
@@ -50,6 +47,12 @@ fn test_pdf_markdown_extraction_produces_structured_output() {
     println!("Paragraph breaks: {}", para_breaks);
     println!("Total chars: {}", result.content.len());
     println!("Mime type: {}", result.mime_type);
+
+    assert!(
+        para_breaks >= 2,
+        "Should have at least 2 paragraph breaks, got {}",
+        para_breaks
+    );
 }
 
 #[test]

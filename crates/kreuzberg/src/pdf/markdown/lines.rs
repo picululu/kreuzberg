@@ -67,6 +67,7 @@ fn finalize_line(mut segments: Vec<SegmentData>) -> PdfLine {
 
     let bold_count = segments.iter().filter(|s| s.is_bold).count();
     let italic_count = segments.iter().filter(|s| s.is_italic).count();
+    let mono_count = segments.iter().filter(|s| s.is_monospace).count();
     let majority = segments.len().div_ceil(2);
 
     PdfLine {
@@ -76,6 +77,7 @@ fn finalize_line(mut segments: Vec<SegmentData>) -> PdfLine {
         dominant_font_size,
         is_bold: bold_count >= majority,
         is_italic: italic_count >= majority,
+        is_monospace: mono_count >= majority,
         segments,
     }
 }
@@ -149,6 +151,7 @@ mod tests {
             font_size,
             is_bold,
             is_italic,
+            is_monospace: false,
             baseline_y,
         }
     }

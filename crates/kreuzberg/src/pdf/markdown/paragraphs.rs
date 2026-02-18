@@ -53,7 +53,16 @@ pub(super) fn lines_to_paragraphs(lines: Vec<PdfLine>) -> Vec<PdfParagraph> {
         let has_font_change = font_size_change > FONT_SIZE_CHANGE_THRESHOLD;
         let has_indent_change = indent_change > LEFT_INDENT_CHANGE_THRESHOLD;
 
-        let is_paragraph_break = has_significant_gap || (has_some_gap && (has_font_change || has_indent_change));
+        // Force paragraph break if next line starts with a list prefix
+        let next_starts_with_list = line
+            .segments
+            .first()
+            .and_then(|s| s.text.split_whitespace().next())
+            .map(is_list_prefix)
+            .unwrap_or(false);
+
+        let is_paragraph_break =
+            has_significant_gap || (has_some_gap && (has_font_change || has_indent_change)) || next_starts_with_list;
 
         if is_paragraph_break {
             paragraphs.push(finalize_paragraph(current_lines));
@@ -101,12 +110,16 @@ fn finalize_paragraph(lines: Vec<PdfLine>) -> PdfParagraph {
     let first_word = first_text.split_whitespace().next().unwrap_or("");
     let is_list_item = lines.len() <= MAX_LIST_ITEM_LINES && is_list_prefix(first_word);
 
+    // Detect code blocks: all lines must be monospace (and there must be at least one line)
+    let is_code_block = !lines.is_empty() && lines.iter().all(|l| l.is_monospace);
+
     PdfParagraph {
         dominant_font_size,
         heading_level: None,
         is_bold: bold_count >= majority,
         is_italic: italic_count >= majority,
         is_list_item,
+        is_code_block,
         lines,
     }
 }
@@ -193,6 +206,7 @@ mod tests {
             font_size,
             is_bold: false,
             is_italic: false,
+            is_monospace: false,
             baseline_y,
         }
     }
@@ -206,6 +220,7 @@ mod tests {
             dominant_font_size: font_size,
             is_bold: false,
             is_italic: false,
+            is_monospace: false,
         }
     }
 

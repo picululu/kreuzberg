@@ -1,12 +1,11 @@
 //! Heading classification for paragraphs using font-size clustering.
 
-use super::constants::{MAX_HEADING_DISTANCE_MULTIPLIER, MAX_HEADING_WORD_COUNT};
+use super::constants::{MAX_BOLD_HEADING_WORD_COUNT, MAX_HEADING_DISTANCE_MULTIPLIER, MAX_HEADING_WORD_COUNT};
 use super::types::PdfParagraph;
 
-/// Classify paragraphs as headings or body using the global heading map.
+/// Classify paragraphs as headings or body using the global heading map and bold heuristic.
 pub(super) fn classify_paragraphs(paragraphs: &mut [PdfParagraph], heading_map: &[(f32, Option<u8>)]) {
     for para in paragraphs.iter_mut() {
-        // Count actual words across all segments in the paragraph
         let word_count: usize = para
             .lines
             .iter()
@@ -14,12 +13,24 @@ pub(super) fn classify_paragraphs(paragraphs: &mut [PdfParagraph], heading_map: 
             .map(|s| s.text.split_whitespace().count())
             .sum();
 
+        // Pass 1: font-size-based heading classification
         let heading_level = find_heading_level(para.dominant_font_size, heading_map);
 
         if let Some(level) = heading_level
             && word_count <= MAX_HEADING_WORD_COUNT
         {
             para.heading_level = Some(level);
+            continue;
+        }
+
+        // Pass 2: bold short paragraphs → section headings (H2)
+        if para.is_bold && !para.is_list_item && word_count <= MAX_BOLD_HEADING_WORD_COUNT {
+            para.heading_level = Some(2);
+        }
+
+        // Pass 3: code blocks should never be headings
+        if para.is_code_block {
+            para.heading_level = None;
         }
     }
 }
@@ -76,6 +87,7 @@ mod tests {
                 font_size,
                 is_bold: false,
                 is_italic: false,
+                is_monospace: false,
                 baseline_y: 700.0,
             })
             .collect();
@@ -89,12 +101,14 @@ mod tests {
                 dominant_font_size: font_size,
                 is_bold: false,
                 is_italic: false,
+                is_monospace: false,
             }],
             dominant_font_size: font_size,
             heading_level: None,
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         }
     }
 
@@ -146,6 +160,38 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_bold_short_paragraph_promoted_to_heading() {
+        let heading_map = vec![(12.0, None)]; // no heading clusters
+        let mut para = make_paragraph(12.0, 3);
+        para.is_bold = true;
+        para.lines[0].is_bold = true;
+        let mut paragraphs = vec![para];
+        classify_paragraphs(&mut paragraphs, &heading_map);
+        assert_eq!(paragraphs[0].heading_level, Some(2));
+    }
+
+    #[test]
+    fn test_classify_bold_long_paragraph_not_promoted() {
+        let heading_map = vec![(12.0, None)];
+        let mut para = make_paragraph(12.0, 20); // too many words
+        para.is_bold = true;
+        let mut paragraphs = vec![para];
+        classify_paragraphs(&mut paragraphs, &heading_map);
+        assert_eq!(paragraphs[0].heading_level, None);
+    }
+
+    #[test]
+    fn test_classify_bold_list_item_not_promoted() {
+        let heading_map = vec![(12.0, None)];
+        let mut para = make_paragraph(12.0, 3);
+        para.is_bold = true;
+        para.is_list_item = true;
+        let mut paragraphs = vec![para];
+        classify_paragraphs(&mut paragraphs, &heading_map);
+        assert_eq!(paragraphs[0].heading_level, None);
+    }
+
+    #[test]
     fn test_classify_few_segments_many_words_not_heading() {
         // 3 segments but each contains many words — total word count exceeds threshold
         let segments: Vec<SegmentData> = (0..3)
@@ -158,6 +204,7 @@ mod tests {
                 font_size: 18.0,
                 is_bold: false,
                 is_italic: false,
+                is_monospace: false,
                 baseline_y: 700.0,
             })
             .collect();
@@ -171,12 +218,14 @@ mod tests {
                 dominant_font_size: 18.0,
                 is_bold: false,
                 is_italic: false,
+                is_monospace: false,
             }],
             dominant_font_size: 18.0,
             heading_level: None,
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         }];
         // 3 segments × 6 words = 18 words > MAX_HEADING_WORD_COUNT
         let heading_map = vec![(18.0, Some(1)), (12.0, None)];

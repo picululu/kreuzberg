@@ -14,6 +14,7 @@ pub(super) struct PdfLine {
     pub dominant_font_size: f32,
     pub is_bold: bool,
     pub is_italic: bool,
+    pub is_monospace: bool,
 }
 
 /// A paragraph composed of lines, with optional heading classification.
@@ -22,9 +23,9 @@ pub(super) struct PdfParagraph {
     pub lines: Vec<PdfLine>,
     pub dominant_font_size: f32,
     pub heading_level: Option<u8>,
-    #[allow(dead_code)]
     pub is_bold: bool,
     #[allow(dead_code)]
     pub is_italic: bool,
     pub is_list_item: bool,
+    pub is_code_block: bool,
 }

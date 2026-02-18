@@ -13,14 +13,23 @@ pub(super) fn render_paragraph_to_output(para: &PdfParagraph, output: &mut Strin
         output.push_str(&prefix);
         output.push(' ');
         output.push_str(&text);
-    } else if para.is_list_item {
-        for (line_idx, line) in para.lines.iter().enumerate() {
-            if line_idx > 0 {
-                output.push('\n');
-            }
-            let text = render_line_with_inline_markup(line);
-            output.push_str(&text);
+    } else if para.is_code_block {
+        output.push_str("```\n");
+        for line in &para.lines {
+            let line_text = line
+                .segments
+                .iter()
+                .map(|s| s.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            output.push_str(&line_text);
+            output.push('\n');
         }
+        output.push_str("```");
+    } else if para.is_list_item {
+        let text = render_paragraph_with_inline_markup(para);
+        let normalized = normalize_list_prefix(&text);
+        output.push_str(&normalized);
     } else {
         let text = render_paragraph_with_inline_markup(para);
         output.push_str(&text);
@@ -79,6 +88,34 @@ pub fn inject_image_placeholders(markdown: &str, images: &[crate::types::Extract
     result
 }
 
+/// Normalize bullet/number list prefix to standard markdown syntax.
+fn normalize_list_prefix(text: &str) -> String {
+    let trimmed = text.trim_start();
+    // Bullet chars → "- "
+    if trimmed.starts_with('\u{2022}') || trimmed.starts_with("* ") {
+        let rest = if trimmed.starts_with('\u{2022}') {
+            trimmed['\u{2022}'.len_utf8()..].trim_start()
+        } else {
+            trimmed[2..].trim_start()
+        };
+        return format!("- {rest}");
+    }
+    if trimmed.starts_with("- ") {
+        return text.trim_start().to_string();
+    }
+    // Numbered prefix: keep as-is (e.g. "1. text")
+    let bytes = trimmed.as_bytes();
+    let digit_end = bytes.iter().position(|&b| !b.is_ascii_digit()).unwrap_or(0);
+    if digit_end > 0 && digit_end < bytes.len() {
+        let suffix = bytes[digit_end];
+        if suffix == b'.' || suffix == b')' {
+            return text.trim_start().to_string();
+        }
+    }
+    // Fallback: prefix with "- "
+    format!("- {trimmed}")
+}
+
 /// Join lines into a single string (no inline markup).
 fn join_line_texts(lines: &[PdfLine]) -> String {
     let all_words: Vec<&str> = lines
@@ -103,21 +140,10 @@ fn join_texts_cjk_aware(texts: &[&str]) -> String {
     result
 }
 
-/// Render a single line with bold/italic inline markup.
-fn render_line_with_inline_markup(line: &PdfLine) -> String {
-    render_segments_with_markup(&line.segments)
-}
-
 /// Render an entire body paragraph with inline bold/italic markup.
 fn render_paragraph_with_inline_markup(para: &PdfParagraph) -> String {
     let all_segments: Vec<&SegmentData> = para.lines.iter().flat_map(|l| l.segments.iter()).collect();
     render_segment_refs_with_markup(&all_segments)
-}
-
-/// Render segments with run-length-encoded bold/italic markup.
-fn render_segments_with_markup(segments: &[SegmentData]) -> String {
-    let refs: Vec<&SegmentData> = segments.iter().collect();
-    render_segment_refs_with_markup(&refs)
 }
 
 /// Core inline markup renderer working on segment references.
@@ -202,6 +228,7 @@ mod tests {
             font_size: 12.0,
             is_bold,
             is_italic,
+            is_monospace: false,
             baseline_y: 700.0,
         }
     }
@@ -215,6 +242,7 @@ mod tests {
             dominant_font_size: 12.0,
             is_bold: false,
             is_italic: false,
+            is_monospace: false,
         }
     }
 
@@ -230,6 +258,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -245,6 +274,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -263,6 +293,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -278,6 +309,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -293,6 +325,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -312,6 +345,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -337,6 +371,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -357,6 +392,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);
@@ -376,6 +412,7 @@ mod tests {
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         };
         let mut output = String::new();
         render_paragraph_to_output(&para, &mut output);

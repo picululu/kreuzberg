@@ -25,3 +25,5 @@ pub(super) const PAGE_BOTTOM_MARGIN_FRACTION: f32 = 0.05;
 /// Minimum font size (in points) for a segment to be included in analysis.
 /// Segments below this size are likely artifacts (embedded images, symbols, noise).
 pub(super) const MIN_FONT_SIZE: f32 = 4.0;
+/// Maximum word count for a bold paragraph to be promoted to a section heading.
+pub(super) const MAX_BOLD_HEADING_WORD_COUNT: usize = 15;

@@ -5,6 +5,27 @@ use super::types::PdfParagraph;
 
 /// Assemble final markdown string from classified paragraphs across all pages.
 pub(super) fn assemble_markdown(pages: Vec<Vec<PdfParagraph>>) -> String {
+    assemble_markdown_with_tables(pages, &[])
+}
+
+/// Assemble markdown with tables interleaved at their correct reading-order positions.
+///
+/// Tables are matched to pages by their `page_number` (1-indexed). Within a page,
+/// tables with bounding boxes are placed at the correct vertical position relative to
+/// paragraphs. Tables without bounding boxes are appended at the end of their page.
+pub(super) fn assemble_markdown_with_tables(pages: Vec<Vec<PdfParagraph>>, tables: &[crate::types::Table]) -> String {
+    // Group tables by page number (1-indexed → 0-indexed)
+    let mut tables_by_page: std::collections::BTreeMap<usize, Vec<&crate::types::Table>> =
+        std::collections::BTreeMap::new();
+    for table in tables {
+        let page_idx = if table.page_number > 0 {
+            table.page_number - 1
+        } else {
+            0
+        };
+        tables_by_page.entry(page_idx).or_default().push(table);
+    }
+
     let mut output = String::new();
 
     for (page_idx, paragraphs) in pages.iter().enumerate() {
@@ -12,15 +33,109 @@ pub(super) fn assemble_markdown(pages: Vec<Vec<PdfParagraph>>) -> String {
             output.push_str("\n\n");
         }
 
-        for (para_idx, para) in paragraphs.iter().enumerate() {
-            if para_idx > 0 {
-                output.push_str("\n\n");
+        let page_tables = tables_by_page.remove(&page_idx);
+
+        if let Some(tables) = page_tables {
+            assemble_page_with_tables(&mut output, paragraphs, &tables);
+        } else {
+            for (para_idx, para) in paragraphs.iter().enumerate() {
+                if para_idx > 0 {
+                    output.push_str("\n\n");
+                }
+                render_paragraph_to_output(para, &mut output);
             }
-            render_paragraph_to_output(para, &mut output);
+        }
+    }
+
+    // Append tables for pages beyond what we have paragraphs for
+    for tables in tables_by_page.values() {
+        for table in tables {
+            if !table.markdown.trim().is_empty() {
+                if !output.is_empty() {
+                    output.push_str("\n\n");
+                }
+                output.push_str(table.markdown.trim());
+            }
         }
     }
 
     output
+}
+
+/// Assemble a single page's paragraphs with tables interleaved by vertical position.
+fn assemble_page_with_tables(output: &mut String, paragraphs: &[PdfParagraph], tables: &[&crate::types::Table]) {
+    // Split tables into positioned (have bounding box) and unpositioned
+    let mut positioned: Vec<(f32, &str)> = Vec::new();
+    let mut unpositioned: Vec<&str> = Vec::new();
+
+    for table in tables {
+        let md = table.markdown.trim();
+        if md.is_empty() {
+            continue;
+        }
+        if let Some(ref bbox) = table.bounding_box {
+            // In PDF coordinates, y1 is the top of the table (higher = earlier in reading order)
+            // Use y1 as the position reference
+            positioned.push((bbox.y1 as f32, md));
+        } else {
+            unpositioned.push(md);
+        }
+    }
+
+    // Sort positioned tables by y-position descending (top of page first in PDF coords)
+    positioned.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Build interleaved output: paragraphs and tables sorted by vertical position
+    // Each paragraph's position is the baseline_y of its first line
+    // In PDF coords, higher y = higher on page = earlier in reading order
+
+    struct Element<'a> {
+        y_pos: f32,
+        content: ElementContent<'a>,
+    }
+    enum ElementContent<'a> {
+        Paragraph(&'a PdfParagraph),
+        Table(&'a str),
+    }
+
+    let mut elements: Vec<Element> = Vec::new();
+
+    for para in paragraphs {
+        let y_pos = para.lines.first().map(|l| l.baseline_y).unwrap_or(0.0);
+        elements.push(Element {
+            y_pos,
+            content: ElementContent::Paragraph(para),
+        });
+    }
+
+    for (y_pos, md) in &positioned {
+        elements.push(Element {
+            y_pos: *y_pos,
+            content: ElementContent::Table(md),
+        });
+    }
+
+    // Sort by y descending (top of page first in PDF coordinates)
+    elements.sort_by(|a, b| b.y_pos.partial_cmp(&a.y_pos).unwrap_or(std::cmp::Ordering::Equal));
+
+    let start_len = output.len();
+    for elem in &elements {
+        if output.len() > start_len {
+            output.push_str("\n\n");
+        }
+        match &elem.content {
+            ElementContent::Paragraph(para) => render_paragraph_to_output(para, output),
+            ElementContent::Table(md) => output.push_str(md),
+        }
+    }
+
+    // Append unpositioned tables at end of page
+    for md in &unpositioned {
+        if output.len() > start_len {
+            output.push_str("\n\n");
+        }
+        output.push_str(md);
+    }
 }
 
 #[cfg(test)]
@@ -40,26 +155,36 @@ mod tests {
             font_size: 12.0,
             is_bold: false,
             is_italic: false,
+            is_monospace: false,
             baseline_y: 700.0,
         }
     }
 
     fn make_paragraph(text: &str, heading_level: Option<u8>) -> PdfParagraph {
+        make_paragraph_at(text, heading_level, 700.0)
+    }
+
+    fn make_paragraph_at(text: &str, heading_level: Option<u8>, baseline_y: f32) -> PdfParagraph {
         PdfParagraph {
             lines: vec![PdfLine {
-                segments: vec![plain_segment(text)],
-                baseline_y: 700.0,
-                y_top: 688.0,
-                y_bottom: 700.0,
+                segments: vec![SegmentData {
+                    baseline_y,
+                    ..plain_segment(text)
+                }],
+                baseline_y,
+                y_top: baseline_y - 12.0,
+                y_bottom: baseline_y,
                 dominant_font_size: 12.0,
                 is_bold: false,
                 is_italic: false,
+                is_monospace: false,
             }],
             dominant_font_size: 12.0,
             heading_level,
             is_bold: false,
             is_italic: false,
             is_list_item: false,
+            is_code_block: false,
         }
     }
 
@@ -87,5 +212,74 @@ mod tests {
         ];
         let result = assemble_markdown(pages);
         assert_eq!(result, "Page 1\n\nPage 2");
+    }
+
+    #[test]
+    fn test_assemble_with_tables_no_tables() {
+        let pages = vec![vec![make_paragraph("Body", None)]];
+        let result = assemble_markdown_with_tables(pages, &[]);
+        assert_eq!(result, "Body");
+    }
+
+    #[test]
+    fn test_assemble_with_tables_no_bbox() {
+        let pages = vec![vec![make_paragraph("Before", None)]];
+        let tables = vec![crate::types::Table {
+            cells: vec![],
+            markdown: "| A | B |\n|---|---|\n| 1 | 2 |".to_string(),
+            page_number: 1,
+            bounding_box: None,
+        }];
+        let result = assemble_markdown_with_tables(pages, &tables);
+        assert!(result.starts_with("Before"));
+        assert!(result.contains("| A | B |"));
+    }
+
+    #[test]
+    fn test_assemble_with_tables_positioned() {
+        // Paragraph at y=700 (top), table at y=500 (middle), paragraph at y=300 (bottom)
+        let pages = vec![vec![
+            make_paragraph_at("Top text", None, 700.0),
+            make_paragraph_at("Bottom text", None, 300.0),
+        ]];
+        let tables = vec![crate::types::Table {
+            cells: vec![],
+            markdown: "| Col1 | Col2 |".to_string(),
+            page_number: 1,
+            bounding_box: Some(crate::types::BoundingBox {
+                x0: 50.0,
+                y0: 400.0,
+                x1: 500.0,
+                y1: 500.0,
+            }),
+        }];
+        let result = assemble_markdown_with_tables(pages, &tables);
+        let parts: Vec<&str> = result.split("\n\n").collect();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0], "Top text");
+        assert_eq!(parts[1], "| Col1 | Col2 |");
+        assert_eq!(parts[2], "Bottom text");
+    }
+
+    #[test]
+    fn test_assemble_with_tables_multipage() {
+        let pages = vec![
+            vec![make_paragraph("Page 1", None)],
+            vec![make_paragraph("Page 2", None)],
+        ];
+        let tables = vec![crate::types::Table {
+            cells: vec![],
+            markdown: "| Table |".to_string(),
+            page_number: 2,
+            bounding_box: None,
+        }];
+        let result = assemble_markdown_with_tables(pages, &tables);
+        assert!(result.contains("Page 1"));
+        assert!(result.contains("Page 2"));
+        assert!(result.contains("| Table |"));
+        // Table should be on page 2
+        let page2_start = result.find("Page 2").unwrap();
+        let table_pos = result.find("| Table |").unwrap();
+        assert!(table_pos > page2_start);
     }
 }

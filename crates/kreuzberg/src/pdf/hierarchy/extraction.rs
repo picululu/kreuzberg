@@ -381,6 +381,8 @@ pub struct SegmentData {
     pub is_bold: bool,
     /// Whether the font is italic
     pub is_italic: bool,
+    /// Whether the font is monospace (e.g. Courier, Consolas)
+    pub is_monospace: bool,
     /// Baseline Y position (from first character origin, falls back to bounds bottom)
     pub baseline_y: f32,
 }
@@ -433,6 +435,7 @@ pub fn extract_segments_from_page(page: &PdfPage) -> Result<Vec<SegmentData>> {
         let mut font_size = DEFAULT_FONT_SIZE;
         let mut is_bold = false;
         let mut is_italic = false;
+        let mut is_monospace = false;
         let mut baseline_y = seg_bottom;
         let mut sampled = false;
 
@@ -468,6 +471,7 @@ pub fn extract_segments_from_page(page: &PdfPage) -> Result<Vec<SegmentData>> {
 
             is_bold = is_bold_flag || bold_from_name || bold_from_weight;
             is_italic = is_italic_flag || italic_from_name;
+            is_monospace = is_monospace_font(&font_name.to_lowercase());
 
             baseline_y = ch.origin().map(|(_x, y)| y.value).unwrap_or(seg_bottom);
 
@@ -488,11 +492,36 @@ pub fn extract_segments_from_page(page: &PdfPage) -> Result<Vec<SegmentData>> {
             font_size,
             is_bold,
             is_italic,
+            is_monospace,
             baseline_y,
         });
     }
 
     Ok(segment_data_list)
+}
+
+/// Check if a lowercase font name indicates a monospace font.
+fn is_monospace_font(name_lower: &str) -> bool {
+    const MONOSPACE_PATTERNS: &[&str] = &[
+        "mono",
+        "courier",
+        "consolas",
+        "menlo",
+        "source code",
+        "inconsolata",
+        "fira code",
+        "liberation mono",
+        "lucida console",
+        "andale mono",
+        "dejavu sans mono",
+        "roboto mono",
+        "noto mono",
+        "ibm plex mono",
+        "jetbrains mono",
+        "cascadia",
+        "hack",
+    ];
+    MONOSPACE_PATTERNS.iter().any(|p| name_lower.contains(p))
 }
 
 /// Merge characters into text blocks using a greedy clustering algorithm.

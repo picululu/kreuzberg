@@ -96,6 +96,7 @@ pub mod prelude {
         },
         pdf::document::page::objects::common::*,
         pdf::document::page::objects::*,
+        pdf::document::page::paragraph::*,
         pdf::document::page::render_config::*,
         pdf::document::page::size::*,
         pdf::document::page::struct_element::*,

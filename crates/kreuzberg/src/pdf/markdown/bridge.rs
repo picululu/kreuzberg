@@ -1,13 +1,29 @@
-//! Bridge between structure tree extraction and the markdown pipeline.
+//! Bridge between pdfium extraction APIs and the markdown pipeline.
 //!
-//! Converts `ExtractedBlock` (from the pdfium structure tree API) into
-//! the local `PdfParagraph` type used by the markdown assembly pipeline.
+//! Two conversion paths:
+//! 1. Structure tree: `ExtractedBlock` → `PdfParagraph` (for tagged PDFs)
+//! 2. Page objects: `PdfPage` → `(Vec<SegmentData>, Vec<ImagePosition>)` (heuristic extraction)
 
 use crate::pdf::hierarchy::SegmentData;
 use pdfium_render::prelude::*;
 
 use super::constants::{MAX_HEADING_WORD_COUNT, MIN_HEADING_FONT_GAP, MIN_HEADING_FONT_RATIO};
 use super::types::{PdfLine, PdfParagraph};
+
+// Alias to distinguish from our local PdfParagraph type.
+use pdfium_render::prelude::PdfParagraph as PdfiumParagraph;
+
+/// Position and metadata of an image detected during object-based extraction.
+#[derive(Debug, Clone)]
+pub(super) struct ImagePosition {
+    /// 1-indexed page number.
+    pub page_number: usize,
+    /// Global image index across the document.
+    pub image_index: usize,
+    /// Top Y position in PDF coordinates (higher = earlier in reading order).
+    #[allow(dead_code)]
+    pub y_top: f32,
+}
 
 /// Convert extracted blocks from the structure tree API into PdfParagraphs.
 ///
@@ -107,6 +123,7 @@ fn convert_blocks(blocks: &[ExtractedBlock], body_font_size: f32, paragraphs: &m
                 font_size,
                 is_bold: block.is_bold,
                 is_italic: block.is_italic,
+                is_monospace: false,
                 baseline_y: 0.0,
             })
             .collect();
@@ -123,6 +140,7 @@ fn convert_blocks(blocks: &[ExtractedBlock], body_font_size: f32, paragraphs: &m
             dominant_font_size: font_size,
             is_bold: block.is_bold,
             is_italic: block.is_italic,
+            is_monospace: false,
         };
 
         paragraphs.push(PdfParagraph {
@@ -132,8 +150,84 @@ fn convert_blocks(blocks: &[ExtractedBlock], body_font_size: f32, paragraphs: &m
             is_bold: block.is_bold,
             is_italic: block.is_italic,
             is_list_item,
+            is_code_block: false,
         });
     }
+}
+
+/// Extract text segments and image positions from a PDF page using the page objects API.
+///
+/// Uses `PdfParagraph::from_objects()` for spatial analysis and text grouping,
+/// then converts the output into owned `SegmentData` for compatibility with the
+/// existing pipeline (lines → paragraphs → classify → render).
+///
+/// Also detects image objects and records their positions for interleaving.
+pub(super) fn objects_to_page_data(
+    page: &PdfPage,
+    page_number: usize,
+    image_offset: &mut usize,
+) -> (Vec<SegmentData>, Vec<ImagePosition>) {
+    let objects: Vec<PdfPageObject> = page.objects().iter().collect();
+    let paragraphs: Vec<PdfiumParagraph> = PdfiumParagraph::from_objects(&objects);
+
+    let mut segments = Vec::new();
+    let mut images = Vec::new();
+
+    // Convert each pdfium paragraph into segments with per-line position data.
+    // Using into_lines() gives us accurate baseline positions for each line,
+    // which is critical for the downstream segments_to_lines() grouping.
+    for para in paragraphs {
+        for line in para.into_lines() {
+            let line_baseline = line.bottom.value;
+            let line_left = line.left.value;
+
+            for fragment in &line.fragments {
+                match fragment {
+                    PdfParagraphFragment::StyledString(styled) => {
+                        let text = styled.text().to_string();
+                        if text.trim().is_empty() {
+                            continue;
+                        }
+
+                        let font_size = styled.font_size().value;
+                        let is_bold = styled.is_bold();
+                        let is_italic = styled.is_italic();
+                        let is_monospace = styled.is_monospace();
+
+                        segments.push(SegmentData {
+                            text,
+                            x: line_left,
+                            y: line_baseline,
+                            width: 0.0,
+                            height: font_size,
+                            font_size,
+                            is_bold,
+                            is_italic,
+                            is_monospace,
+                            baseline_y: line_baseline,
+                        });
+                    }
+                    PdfParagraphFragment::NonTextObject(_) | PdfParagraphFragment::LineBreak(_) => {}
+                }
+            }
+        }
+    }
+
+    // Separate image scan: iterate page objects to find images with positions
+    for obj in &objects {
+        if let Some(img_obj) = obj.as_image_object() {
+            let y_top = img_obj.bounds().map(|b| b.top().value).unwrap_or(0.0);
+
+            images.push(ImagePosition {
+                page_number,
+                image_index: *image_offset,
+                y_top,
+            });
+            *image_offset += 1;
+        }
+    }
+
+    (segments, images)
 }
 
 #[cfg(test)]

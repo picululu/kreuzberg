@@ -1,19 +1,18 @@
 //! Main PDF-to-Markdown pipeline orchestrator.
 
 use crate::pdf::error::Result;
-use crate::pdf::hierarchy::{
-    BoundingBox, SegmentData, TextBlock, assign_heading_levels_smart, cluster_font_sizes, extract_segments_from_page,
-};
+use crate::pdf::hierarchy::{BoundingBox, SegmentData, TextBlock, assign_heading_levels_smart, cluster_font_sizes};
 use pdfium_render::prelude::*;
 
-use super::assembly::assemble_markdown;
-use super::bridge::extracted_blocks_to_paragraphs;
+use super::assembly::{assemble_markdown, assemble_markdown_with_tables};
+use super::bridge::{ImagePosition, extracted_blocks_to_paragraphs, objects_to_page_data};
 use super::classify::classify_paragraphs;
 use super::constants::{
     MIN_FONT_SIZE, MIN_HEADING_FONT_GAP, MIN_HEADING_FONT_RATIO, PAGE_BOTTOM_MARGIN_FRACTION, PAGE_TOP_MARGIN_FRACTION,
 };
 use super::lines::segments_to_lines;
 use super::paragraphs::{lines_to_paragraphs, merge_continuation_paragraphs};
+use super::render::inject_image_placeholders;
 use super::types::PdfParagraph;
 
 /// Render an entire PDF document as markdown.
@@ -21,13 +20,11 @@ pub fn render_document_as_markdown(document: &PdfDocument, k_clusters: usize) ->
     render_document_as_markdown_with_tables(document, k_clusters, &[])
 }
 
-/// Render a PDF document as markdown.
-///
-/// The `tables` parameter is accepted for API compatibility but currently unused.
+/// Render a PDF document as markdown, with tables interleaved at their positions.
 pub fn render_document_as_markdown_with_tables(
     document: &PdfDocument,
     k_clusters: usize,
-    _tables: &[crate::types::Table],
+    tables: &[crate::types::Table],
 ) -> Result<String> {
     let pages = document.pages();
     let page_count = pages.len();
@@ -59,14 +56,18 @@ pub fn render_document_as_markdown_with_tables(
     }
 
     // Stage 1: Extract segments from pages that need heuristic extraction.
-    // Filter out segments in page header/footer margins and standalone page numbers.
+    // Uses pdfium's page objects API (via PdfParagraph::from_objects) for spatial analysis
+    // and text grouping, plus image detection for position-aware placeholders.
     let mut all_page_segments: Vec<Vec<SegmentData>> = vec![Vec::new(); page_count as usize];
+    let mut all_image_positions: Vec<ImagePosition> = Vec::new();
+    let mut image_offset = 0usize;
 
     for &i in &heuristic_pages {
         let page = pages.get(i as PdfPageIndex).map_err(|e| {
             crate::pdf::error::PdfError::TextExtractionFailed(format!("Failed to get page {}: {:?}", i, e))
         })?;
-        let segments = extract_segments_from_page(&page)?;
+
+        let (segments, image_positions) = objects_to_page_data(&page, i + 1, &mut image_offset);
 
         // Filter out segments in page margins (headers/footers/page numbers)
         let page_height = page.height().value;
@@ -84,6 +85,7 @@ pub fn render_document_as_markdown_with_tables(
         filter_standalone_page_numbers(&mut filtered);
 
         all_page_segments[i] = filtered;
+        all_image_positions.extend(image_positions);
     }
 
     // Stage 2: Global font-size clustering (only for heuristic pages).
@@ -129,8 +131,36 @@ pub fn render_document_as_markdown_with_tables(
         }
     }
 
-    // Stage 4: Assemble markdown
-    Ok(assemble_markdown(all_page_paragraphs))
+    // Stage 4: Assemble markdown with tables interleaved
+    let markdown = if tables.is_empty() {
+        assemble_markdown(all_page_paragraphs)
+    } else {
+        assemble_markdown_with_tables(all_page_paragraphs, tables)
+    };
+
+    // Stage 5: Inject image placeholders from positions collected during object extraction
+    if all_image_positions.is_empty() {
+        Ok(markdown)
+    } else {
+        let image_metadata: Vec<crate::types::ExtractedImage> = all_image_positions
+            .iter()
+            .map(|img| crate::types::ExtractedImage {
+                data: bytes::Bytes::new(),
+                format: std::borrow::Cow::Borrowed("unknown"),
+                image_index: img.image_index,
+                page_number: Some(img.page_number),
+                width: None,
+                height: None,
+                colorspace: None,
+                bits_per_component: None,
+                is_mask: false,
+                description: None,
+                ocr_result: None,
+                bounding_box: None,
+            })
+            .collect();
+        Ok(inject_image_placeholders(&markdown, &image_metadata))
+    }
 }
 
 /// Remove standalone page numbers from segments.

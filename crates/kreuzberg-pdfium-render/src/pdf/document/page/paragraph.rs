@@ -7,7 +7,7 @@ use crate::pdf::document::PdfDocument;
 use crate::pdf::document::page::object::private::internal::PdfPageObjectPrivate;
 use crate::pdf::document::page::object::text::PdfPageTextObject;
 use crate::pdf::document::page::object::{PdfPageObject, PdfPageObjectCommon};
-use crate::pdf::font::PdfFont;
+use crate::pdf::font::{PdfFont, PdfFontWeight};
 use crate::pdf::points::PdfPoints;
 use itertools::Itertools;
 use maybe_owned::MaybeOwned;
@@ -84,6 +84,78 @@ impl<'a> PdfStyledString<'a> {
         self.does_match_raw_styling(other.unscaled_font_size(), &other.font())
     }
 
+    /// Returns `true` if this styled string's font is bold.
+    ///
+    /// Checks the font descriptor's force-bold flag, the font weight (>= 700),
+    /// and the font family name for "bold" substring.
+    pub fn is_bold(&self) -> bool {
+        let font = self.font();
+
+        if font.is_bold_reenforced() {
+            return true;
+        }
+
+        if let Ok(weight) = font.weight()
+            && matches!(
+                weight,
+                PdfFontWeight::Weight700Bold | PdfFontWeight::Weight800 | PdfFontWeight::Weight900
+            )
+        {
+            return true;
+        }
+
+        font.family().to_lowercase().contains("bold")
+    }
+
+    /// Returns `true` if this styled string's font is italic.
+    ///
+    /// Checks the font descriptor's italic flag and the font family name
+    /// for "italic" or "oblique" substrings.
+    pub fn is_italic(&self) -> bool {
+        let font = self.font();
+
+        if font.is_italic() {
+            return true;
+        }
+
+        let name = font.family().to_lowercase();
+        name.contains("italic") || name.contains("oblique")
+    }
+
+    /// Returns `true` if this styled string's font is monospace.
+    ///
+    /// Checks the font descriptor's fixed-pitch flag and the font family name
+    /// against common monospace font patterns.
+    pub fn is_monospace(&self) -> bool {
+        let font = self.font();
+
+        if font.is_fixed_pitch() {
+            return true;
+        }
+
+        let name = font.family().to_lowercase();
+        const MONOSPACE_PATTERNS: &[&str] = &[
+            "mono",
+            "courier",
+            "consolas",
+            "menlo",
+            "source code",
+            "inconsolata",
+            "fira code",
+            "liberation mono",
+            "lucida console",
+            "andale mono",
+            "dejavu sans mono",
+            "roboto mono",
+            "noto mono",
+            "ibm plex mono",
+            "jetbrains mono",
+            "cascadia",
+            "hack",
+        ];
+        MONOSPACE_PATTERNS.iter().any(|p| name.contains(p))
+    }
+
     fn does_match_raw_styling(&self, other_font_size: PdfPoints, other_font: &PdfFont) -> bool {
         // It's more expensive to try to match the fonts based on name, so we try to match
         // based on FPDF_FONT handles first.
@@ -122,9 +194,12 @@ impl<'a> PdfStyledString<'a> {
 
 /// A single fragment in a [PdfParagraph]. The fragment may later be split into sub-fragments when
 /// assembling the [PdfParagraph] into lines.
-enum PdfParagraphFragment<'a> {
+pub enum PdfParagraphFragment<'a> {
+    /// A run of styled text.
     StyledString(PdfStyledString<'a>),
+    /// A line break with alignment information.
     LineBreak(PdfLineAlignment),
+    /// A non-text page object (image, path, shading, etc.).
     NonTextObject(FPDF_PAGEOBJECT),
 }
 
@@ -165,21 +240,31 @@ pub enum PdfParagraphAlignment {
 
 /// The paragraph-relative alignment of a single [PdfLine].
 #[derive(Copy, Clone, Debug, PartialEq)]
-enum PdfLineAlignment {
+pub enum PdfLineAlignment {
+    /// No alignment detected.
     None,
+    /// Left-aligned.
     LeftAlign,
+    /// Right-aligned.
     RightAlign,
+    /// Centered.
     Center,
+    /// Justified.
     Justify,
 }
 
 /// A span of paragraph fragments that make up one line in a [PdfParagraph].
-struct PdfLine<'a> {
-    alignment: PdfLineAlignment,
-    bottom: PdfPoints,
-    left: PdfPoints,
-    width: PdfPoints,
-    fragments: Vec<PdfParagraphFragment<'a>>,
+pub struct PdfLine<'a> {
+    /// The alignment of this line within the paragraph.
+    pub alignment: PdfLineAlignment,
+    /// The bottom Y position of this line in PDF points.
+    pub bottom: PdfPoints,
+    /// The left X position of this line in PDF points.
+    pub left: PdfPoints,
+    /// The width of this line in PDF points.
+    pub width: PdfPoints,
+    /// The fragments composing this line.
+    pub fragments: Vec<PdfParagraphFragment<'a>>,
 }
 
 impl<'a> PdfLine<'a> {
@@ -223,6 +308,7 @@ pub struct PdfParagraph<'a> {
     max_width: Option<PdfPoints>,
     #[allow(unused)]
     max_height: Option<PdfPoints>,
+    #[allow(unused)]
     overflow: PdfParagraphOverflowBehaviour,
     alignment: PdfParagraphAlignment,
     #[allow(unused)]
@@ -318,32 +404,20 @@ impl<'a> PdfParagraph<'a> {
                 (object_bottom, object_top, object_left, object_right, object)
             })
             .sorted_by(|a, b| {
-                let (a_bottom, _a_top, _, a_right) = (a.0, a.1, a.2, a.3);
+                let (_a_bottom, a_top, a_left, _a_right) = (a.0, a.1, a.2, a.3);
+                let (_b_bottom, b_top, b_left, _b_right) = (b.0, b.1, b.2, b.3);
 
-                let (_b_bottom, b_top, b_left, _) = (b.0, b.1, b.2, b.3);
-
-                // Keep track of the paragraph maximum bounds as we examine objects.
-
-                // Sort by position: vertically first, then horizontally.
-
-                if b_top > a_bottom {
-                    // Object a is in a line lower down the page than object b.
-
-                    Ordering::Greater
-                } else if b_top < a_bottom {
-                    // Object a is in a line higher up the page than object b.
-
-                    Ordering::Less
-                } else if a_right < b_left {
-                    // Objects a and b are on the same line, and object a is closer to the left edge
-                    // of the line than object b.
-
-                    Ordering::Less
-                } else {
-                    // Objects a and b are on the same line, and object a is closer to the right edge
-                    // of the line than object b.
-
-                    Ordering::Greater
+                // Sort by position: top-to-bottom first (higher y = earlier in reading order),
+                // then left-to-right within a line.
+                // Use the top coordinate for vertical ordering (PDF y increases upward).
+                match b_top.value.partial_cmp(&a_top.value).unwrap_or(Ordering::Equal) {
+                    Ordering::Equal => {
+                        // Same vertical position: sort by horizontal (left-to-right)
+                        a_left.value.partial_cmp(&b_left.value).unwrap_or(Ordering::Equal)
+                    }
+                    // If b_top > a_top, b is higher on page → b comes first → a is Greater
+                    // If b_top < a_top, a is higher on page → a comes first → a is Less
+                    other => other,
                 }
             })
             .collect::<Vec<_>>();
@@ -676,6 +750,30 @@ impl<'a> PdfParagraph<'a> {
         self.fragments.is_empty()
     }
 
+    /// Returns a reference to the fragments in this paragraph.
+    #[inline]
+    pub fn fragments(&self) -> &[PdfParagraphFragment<'a>] {
+        &self.fragments
+    }
+
+    /// Returns the bottom Y position of this paragraph, if known.
+    #[inline]
+    pub fn bottom(&self) -> Option<PdfPoints> {
+        self.bottom
+    }
+
+    /// Returns the left X position of this paragraph, if known.
+    #[inline]
+    pub fn left(&self) -> Option<PdfPoints> {
+        self.left
+    }
+
+    /// Returns the alignment of this paragraph.
+    #[inline]
+    pub fn alignment(&self) -> PdfParagraphAlignment {
+        self.alignment
+    }
+
     /// Adds a new fragment containing the given styled string to this paragraph.
     #[inline]
     pub fn push(&mut self, string: PdfStyledString<'a>) {
@@ -749,7 +847,7 @@ impl<'a> PdfParagraph<'a> {
     /// Assembles the fragments in this paragraph into lines, taking into account the paragraph's
     /// current sizing, overflow, indent, and alignment settings. Consumes the paragraph and
     /// returns the assembled lines.
-    fn into_lines(self) -> Vec<PdfLine<'a>> {
+    pub fn into_lines(self) -> Vec<PdfLine<'a>> {
         let mut lines: Vec<PdfLine<'a>> = Vec::new();
         let mut current_fragments: Vec<PdfParagraphFragment<'a>> = Vec::new();
         let mut current_width = PdfPoints::ZERO;
