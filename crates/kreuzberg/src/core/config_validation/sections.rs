@@ -90,9 +90,9 @@ const VALID_TESSERACT_PSM: &[i32] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 
 const VALID_TESSERACT_OEM: &[i32] = &[0, 1, 2, 3];
 
 /// Valid output formats for document extraction.
-/// Supports plain text, markdown, djot, and HTML output formats.
-/// Also accepts aliases: "text" for "plain", "md" for "markdown".
-const VALID_OUTPUT_FORMATS: &[&str] = &["plain", "text", "markdown", "md", "djot", "html"];
+/// Supports plain text, markdown, djot, HTML, and structured (JSON) output formats.
+/// Also accepts aliases: "text" for "plain", "md" for "markdown", "json" for "structured".
+const VALID_OUTPUT_FORMATS: &[&str] = &["plain", "text", "markdown", "md", "djot", "html", "structured", "json"];
 
 /// Validate a binarization method string.
 ///
@@ -341,7 +341,7 @@ pub fn validate_tesseract_oem(oem: i32) -> Result<()> {
 /// assert!(validate_output_format("md").is_ok());
 /// assert!(validate_output_format("djot").is_ok());
 /// assert!(validate_output_format("html").is_ok());
-/// assert!(validate_output_format("json").is_err());
+/// assert!(validate_output_format("json").is_ok());
 /// ```
 pub fn validate_output_format(format: &str) -> Result<()> {
     let format = format.to_lowercase();

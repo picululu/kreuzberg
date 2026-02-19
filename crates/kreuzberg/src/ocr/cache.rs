@@ -43,10 +43,14 @@ impl OcrCache {
         let cached_bytes =
             fs::read(&cache_path).map_err(|e| OcrError::CacheError(format!("Failed to read cache file: {}", e)))?;
 
-        let result: OcrExtractionResult = rmp_serde::from_slice(&cached_bytes)
-            .map_err(|e| OcrError::CacheError(format!("Failed to deserialize cache: {}", e)))?;
-
-        Ok(Some(result))
+        match rmp_serde::from_slice::<OcrExtractionResult>(&cached_bytes) {
+            Ok(result) => Ok(Some(result)),
+            Err(_) => {
+                // Stale cache entry (schema changed). Delete and treat as miss.
+                let _ = fs::remove_file(&cache_path);
+                Ok(None)
+            }
+        }
     }
 
     pub fn set_cached_result(

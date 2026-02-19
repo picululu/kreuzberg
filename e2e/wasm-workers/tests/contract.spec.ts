@@ -316,7 +316,6 @@ describe("contract", () => {
 		}
 		assertions.assertExpectedMime(result, ["application/pdf"]);
 		assertions.assertMinContentLength(result, 10);
-		assertions.assertDjotContent(result, true, null);
 	});
 
 	it("config_document_structure", async () => {

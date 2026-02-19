@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [4.3.6]
 
 ### Added
 
@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Structure tree and content marks API in pdfium-render**: New `ExtractedBlock`, `ContentRole`, and `PdfParagraph` types for tagged PDF semantic extraction. Structure tree headings are validated against font size and word count to prevent broken structure trees from misclassifying body text.
 - **Modular markdown pipeline**: Refactored PDF markdown rendering into focused modules — `bridge.rs` (pdfium API bridge), `lines.rs` (baseline grouping), `paragraphs.rs` (paragraph detection), `classify.rs` (heading/code classification), `render.rs` (inline markup), `assembly.rs` (table/image interleaving), `pipeline.rs` (orchestration).
 - **Text encoding normalization**: `normalize_text_encoding()` in bridge.rs converts trailing soft hyphens (`\u{00AD}`) to regular hyphens for word-rejoining, strips mid-word soft hyphens, and removes stray C0 control characters from PDF text.
+- **Table post-processing validation**: Ported `post_process_table()` from html-to-markdown-rs with 10-stage validation — empty row removal, long cell rejection, data row detection, header extraction, column merging, dimension checks, column sparsity, overall density, content asymmetry, and cell normalization. Eliminates false positive table detections in non-table PDFs.
+- **Font quality detection for OCR triggering**: Added `has_unicode_map_error()` to pdfium-render's `PdfPageTextChar`, wrapping `FPDFText_HasUnicodeMapError`. During extraction, characters are sampled per page; if >30% have broken unicode mappings (tofu/garbage), OCR fallback is triggered automatically.
+- **Extended list prefix detection**: Paragraph list detection now recognizes en dashes (`–`), em dashes (`—`), single-letter alphabetic prefixes (`a.`, `b)`, `A.`, `B)`), and roman numerals (`i.` through `xii.`).
 
 ### Fixed
 
@@ -32,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`test_pipeline_with_keyword_extraction` permanently ignored**: Test was marked `#[ignore]` due to test isolation issues. Fixed the underlying problem — `Lazy` static prevented re-registration after `shutdown_all()` — by clearing the processor cache after re-registration.
 - **OCR cache deserialization failure**: Added `#[serde(default)]` to `OcrConfidence.detection` field so cached OCR data from before the field was added can still deserialize.
 - **CI validate, Rust e2e, Java e2e, and C# e2e failures**: Fixed `ChunkerType` serde casing, populated `djot_content` in pipeline for Djot output format, fixed Java/C# e2e test helper APIs.
+- **PDF table detection false positives**: Table detection precision improved from 50% to 100% by applying `post_process_table()` validation to both the pdfium and OCR table detection paths. Non-table PDFs (simple.pdf, fake_memo.pdf, searchable.pdf, google_doc_document.pdf) no longer produce spurious table detections.
+- **Baseline tolerance drift in PDF line grouping**: Line grouping tolerance was computed from the minimum font size across all segments in a line, causing it to shrink when subscripts/superscripts were added. Now anchored to the first segment's font size per line.
+- **Paragraph gap detection using minimum spacing**: The paragraph break threshold used the minimum inter-line spacing, which was fragile to outlier-tight spacings from superscripts/subscripts. Changed to 25th percentile (Q1) for robustness.
 
 ---
 
