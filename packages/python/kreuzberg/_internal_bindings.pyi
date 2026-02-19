@@ -8,6 +8,7 @@ class OutputFormat(StrEnum):
     MARKDOWN = "markdown"
     DJOT = "djot"
     HTML = "html"
+    STRUCTURED = "structured"
 
 class ResultFormat(StrEnum):
     UNIFIED = "unified"

@@ -113,13 +113,14 @@ impl ExtractionConfig {
                 },
                 output_format: if let Some(of) = output_format {
                     match of.to_lowercase().as_str() {
-                        "plain" => kreuzberg::core::config::formats::OutputFormat::Plain,
-                        "markdown" => kreuzberg::core::config::formats::OutputFormat::Markdown,
+                        "plain" | "text" => kreuzberg::core::config::formats::OutputFormat::Plain,
+                        "markdown" | "md" => kreuzberg::core::config::formats::OutputFormat::Markdown,
                         "djot" => kreuzberg::core::config::formats::OutputFormat::Djot,
                         "html" => kreuzberg::core::config::formats::OutputFormat::Html,
+                        "structured" | "json" => kreuzberg::core::config::formats::OutputFormat::Structured,
                         other => {
                             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                                "Invalid output_format: {}. Must be 'plain', 'markdown', 'djot', or 'html'",
+                                "Invalid output_format: {}. Must be 'plain', 'markdown', 'djot', 'html', or 'structured'",
                                 other
                             )));
                         }
@@ -674,19 +675,24 @@ pub struct ChunkingConfig {
 #[pymethods]
 impl ChunkingConfig {
     #[new]
-    #[pyo3(signature = (max_chars=None, max_overlap=None, embedding=None, preset=None))]
+    #[pyo3(signature = (max_chars=None, max_overlap=None, embedding=None, preset=None, chunker_type=None))]
     fn new(
         max_chars: Option<usize>,
         max_overlap: Option<usize>,
         embedding: Option<EmbeddingConfig>,
         preset: Option<String>,
+        chunker_type: Option<String>,
     ) -> Self {
+        let ct = match chunker_type.as_deref() {
+            Some("markdown") => kreuzberg::ChunkerType::Markdown,
+            _ => kreuzberg::ChunkerType::Text,
+        };
         Self {
             inner: kreuzberg::ChunkingConfig {
                 max_characters: max_chars.unwrap_or(1000),
                 overlap: max_overlap.unwrap_or(200),
                 trim: true,
-                chunker_type: kreuzberg::ChunkerType::Text,
+                chunker_type: ct,
                 embedding: embedding.map(Into::into),
                 preset,
             },

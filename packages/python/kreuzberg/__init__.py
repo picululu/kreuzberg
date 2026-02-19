@@ -185,6 +185,7 @@ if not TYPE_CHECKING:
         MARKDOWN = "markdown"
         DJOT = "djot"
         HTML = "html"
+        STRUCTURED = "structured"
 
     class ResultFormat(str, Enum):
         """Result format controlling extraction output structure."""

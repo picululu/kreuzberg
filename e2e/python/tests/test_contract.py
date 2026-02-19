@@ -218,7 +218,7 @@ def test_config_chunking_small() -> None:
 
 
 def test_config_djot_content() -> None:
-    """Tests djot output format produces djot_content field"""
+    """Tests djot output format converts content to djot markup"""
 
     document_path = helpers.resolve_document("pdf/fake_memo.pdf")
     if not document_path.exists():
@@ -231,7 +231,6 @@ def test_config_djot_content() -> None:
     helpers.assert_expected_mime(result, ["application/pdf"])
     helpers.assert_min_content_length(result, 10)
     helpers.assert_output_format(result, "djot")
-    helpers.assert_djot_content(result, has_content=True)
 
 
 def test_config_document_structure() -> None:

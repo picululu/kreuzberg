@@ -14,12 +14,14 @@ from kreuzberg import (
     EmbeddingConfig,
     EmbeddingModelType,
     ExtractionConfig,
+    HierarchyConfig,
     ImageExtractionConfig,
     KeywordAlgorithm,
     KeywordConfig,
     LanguageDetectionConfig,
     OcrConfig,
     OutputFormat,
+    PageConfig,
     PdfConfig,
     PostProcessorConfig,
     ResultFormat,
@@ -62,6 +64,36 @@ def _build_keywords(keywords_data: dict[str, Any]) -> KeywordConfig:
     return KeywordConfig(**kw)
 
 
+def _build_pdf_options(pdf_data: dict[str, Any]) -> PdfConfig:
+    """Convert a pdf_options dict with nested hierarchy to PdfConfig."""
+    po = dict(pdf_data)
+    if "hierarchy" in po and isinstance(po["hierarchy"], dict):
+        po["hierarchy"] = HierarchyConfig(**po["hierarchy"])
+    return PdfConfig(**po)
+
+
+def _build_config_objects(config: dict[str, Any], kwargs: dict[str, Any]) -> None:
+    """Build typed config objects from plain dicts into kwargs."""
+    if (ocr_data := config.get("ocr")) is not None:
+        kwargs["ocr"] = OcrConfig(**ocr_data)
+    if (chunking_data := config.get("chunking")) is not None:
+        kwargs["chunking"] = _build_chunking(chunking_data)
+    if (images_data := config.get("images")) is not None:
+        kwargs["images"] = ImageExtractionConfig(**images_data)
+    if (pdf_options := config.get("pdf_options")) is not None:
+        kwargs["pdf_options"] = _build_pdf_options(pdf_options)
+    if (token_reduction := config.get("token_reduction")) is not None:
+        kwargs["token_reduction"] = TokenReductionConfig(**token_reduction)
+    if (language_detection := config.get("language_detection")) is not None:
+        kwargs["language_detection"] = LanguageDetectionConfig(**language_detection)
+    if (keywords_data := config.get("keywords")) is not None:
+        kwargs["keywords"] = _build_keywords(keywords_data)
+    if (postprocessor := config.get("postprocessor")) is not None:
+        kwargs["postprocessor"] = PostProcessorConfig(**postprocessor)
+    if (pages_data := config.get("pages")) is not None:
+        kwargs["pages"] = PageConfig(**pages_data)
+
+
 def build_config(config: dict[str, Any] | None) -> ExtractionConfig:
     """Construct an ExtractionConfig from a plain dictionary."""
 
@@ -74,29 +106,7 @@ def build_config(config: dict[str, Any] | None) -> ExtractionConfig:
         if key in config:
             kwargs[key] = config[key]
 
-    if (ocr_data := config.get("ocr")) is not None:
-        kwargs["ocr"] = OcrConfig(**ocr_data)
-
-    if (chunking_data := config.get("chunking")) is not None:
-        kwargs["chunking"] = _build_chunking(chunking_data)
-
-    if (images_data := config.get("images")) is not None:
-        kwargs["images"] = ImageExtractionConfig(**images_data)
-
-    if (pdf_options := config.get("pdf_options")) is not None:
-        kwargs["pdf_options"] = PdfConfig(**pdf_options)
-
-    if (token_reduction := config.get("token_reduction")) is not None:
-        kwargs["token_reduction"] = TokenReductionConfig(**token_reduction)
-
-    if (language_detection := config.get("language_detection")) is not None:
-        kwargs["language_detection"] = LanguageDetectionConfig(**language_detection)
-
-    if (keywords_data := config.get("keywords")) is not None:
-        kwargs["keywords"] = _build_keywords(keywords_data)
-
-    if (postprocessor := config.get("postprocessor")) is not None:
-        kwargs["postprocessor"] = PostProcessorConfig(**postprocessor)
+    _build_config_objects(config, kwargs)
 
     if (output_format := config.get("output_format")) is not None:
         kwargs["output_format"] = OutputFormat(output_format)

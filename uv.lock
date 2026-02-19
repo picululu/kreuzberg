@@ -2252,7 +2252,7 @@ wheels = [
 
 [[package]]
 name = "kreuzberg"
-version = "4.3.5"
+version = "4.3.6"
 source = { editable = "packages/python" }
 
 [package.optional-dependencies]
@@ -2301,7 +2301,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "kreuzberg-examples-python"
-version = "4.3.5"
+version = "4.3.6"
 source = { editable = "examples/python" }
 dependencies = [
     { name = "kreuzberg" },
