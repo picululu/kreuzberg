@@ -81,3 +81,36 @@ fn dump_google_doc_markdown() {
     eprintln!("Has '# ' heading: {}", md_result.content.contains("# "));
     eprintln!("Paragraph breaks: {}", md_result.content.matches("\n\n").count());
 }
+
+#[test]
+#[ignore]
+fn dump_redp5110_markdown() {
+    if skip_if_missing("vendored/docling/pdf/redp5110_sampled.pdf") {
+        eprintln!("SKIP: redp5110_sampled.pdf not found");
+        return;
+    }
+
+    let path = get_test_file_path("vendored/docling/pdf/redp5110_sampled.pdf");
+
+    let md_config = ExtractionConfig {
+        output_format: OutputFormat::Markdown,
+        ..Default::default()
+    };
+    let md_result = extract_file_sync(&path, None, &md_config).expect("Markdown extraction failed");
+
+    let plain_config = ExtractionConfig::default();
+    let plain_result = extract_file_sync(&path, None, &plain_config).expect("Plain extraction failed");
+
+    eprintln!(
+        "=== PLAIN: {} words ===",
+        plain_result.content.split_whitespace().count()
+    );
+    eprintln!(
+        "=== MARKDOWN: {} words ===",
+        md_result.content.split_whitespace().count()
+    );
+    eprintln!(
+        "Markdown first 500 chars: {}",
+        &md_result.content[..md_result.content.len().min(500)]
+    );
+}

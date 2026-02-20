@@ -45,7 +45,11 @@ pub fn render_document_as_markdown_with_tables(
                     struct_tree_results.push(Some(paragraphs));
                 }
             }
-            _ => {
+            Ok(_) => {
+                struct_tree_results.push(None);
+                heuristic_pages.push(i as usize);
+            }
+            Err(_) => {
                 struct_tree_results.push(None);
                 heuristic_pages.push(i as usize);
             }
@@ -73,20 +77,49 @@ pub fn render_document_as_markdown_with_tables(
         let top_cutoff = page_height * (1.0 - top_frac);
         let bottom_cutoff = page_height * bottom_frac;
 
-        let mut filtered: Vec<SegmentData> = segments
-            .into_iter()
+        // Filter tiny text first (always applied).
+        // If font-size filtering removes ALL text content, fall back to unfiltered
+        // segments — some PDFs report unscaled font_size=1 when the actual rendered
+        // size comes from the font matrix, so the filter would incorrectly discard
+        // all content.
+        let font_filtered: Vec<SegmentData> = segments
+            .iter()
             .filter(|s| s.font_size >= MIN_FONT_SIZE)
-            .filter(|s| {
-                // Skip margin filtering for segments with baseline_y == 0.0:
-                // pdfium sometimes fails to compute bounds for text objects
-                // (e.g. in two-column LaTeX PDFs), returning 0.0. These segments
-                // contain real content and must not be discarded.
-                if s.baseline_y == 0.0 {
-                    return true;
-                }
-                s.baseline_y <= top_cutoff && s.baseline_y >= bottom_cutoff
-            })
+            .cloned()
             .collect();
+        let font_filtered = if font_filtered.iter().any(|s| !s.text.trim().is_empty()) {
+            font_filtered
+        } else {
+            segments
+        };
+
+        let has_content = font_filtered.iter().any(|s| !s.text.trim().is_empty());
+
+        // Apply margin filtering to remove headers/footers/page numbers.
+        // If margin filtering removes ALL content, fall back to unfiltered
+        // segments — this handles PDFs where pdfium reports baseline_y values
+        // that fall outside the expected margin bands.
+        let mut filtered: Vec<SegmentData> = if has_content {
+            let margin_filtered: Vec<SegmentData> = font_filtered
+                .iter()
+                .filter(|s| {
+                    if s.baseline_y == 0.0 {
+                        return true;
+                    }
+                    s.baseline_y <= top_cutoff && s.baseline_y >= bottom_cutoff
+                })
+                .cloned()
+                .collect();
+
+            if margin_filtered.iter().any(|s| !s.text.trim().is_empty()) {
+                margin_filtered
+            } else {
+                // Margin filter removed everything — skip it for this page
+                font_filtered
+            }
+        } else {
+            font_filtered
+        };
 
         // Remove standalone page numbers: short numeric-only segments that are isolated
         // (no other segment on the same baseline)
