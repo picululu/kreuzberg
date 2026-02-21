@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **PDF ligature corruption in CM/Type1 fonts**: Added contextual ligature repair for PDFs with broken ToUnicode CMaps where pdfium doesn't flag encoding errors. Fixes corrupted text like `di!erent` → `different`, `o"ces` → `offices`, `#nancial` → `financial` in LaTeX-generated PDFs. Uses vowel/consonant heuristic to disambiguate ambiguous ligature mappings. Applied to both structure tree and heuristic extraction paths.
+- **Node.js PDF config options not passed to native binding**: Fixed `extractAnnotations`, `hierarchy`, `topMarginFraction`, and `bottomMarginFraction` PDF config fields being silently dropped by the TypeScript config normalizer, causing PDF annotation extraction to always return `undefined` in the Node.js binding.
 
 ---
 
