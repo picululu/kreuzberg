@@ -25,6 +25,81 @@ pub(super) struct ImagePosition {
     pub image_index: usize,
 }
 
+/// Filter sidebar artifacts from structure tree extracted blocks.
+///
+/// Removes blocks that appear to be sidebar text (e.g., arXiv identifiers
+/// rendered vertically along page margins). Detection criteria:
+/// - Block has bounds in the leftmost or rightmost margin (< 8% or > 92% of page width)
+/// - Block text is very short (≤ 3 characters trimmed)
+/// - At least 3 such blocks exist (to avoid false positives on legitimate margin content)
+pub(super) fn filter_sidebar_blocks(blocks: &[ExtractedBlock], page_width: f32) -> Vec<ExtractedBlock> {
+    if page_width <= 0.0 {
+        return blocks.to_vec();
+    }
+
+    let left_cutoff = page_width * 0.08;
+    let right_cutoff = page_width * 0.92;
+
+    // Count short-text blocks in margins
+    let sidebar_count = count_sidebar_blocks(blocks, left_cutoff, right_cutoff);
+
+    if sidebar_count < 3 {
+        return blocks.to_vec();
+    }
+
+    // Filter them out
+    filter_blocks_recursive(blocks, left_cutoff, right_cutoff)
+}
+
+fn count_sidebar_blocks(blocks: &[ExtractedBlock], left_cutoff: f32, right_cutoff: f32) -> usize {
+    let mut count = 0;
+    for block in blocks {
+        if !block.children.is_empty() {
+            count += count_sidebar_blocks(&block.children, left_cutoff, right_cutoff);
+        } else if is_sidebar_block(block, left_cutoff, right_cutoff) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn is_sidebar_block(block: &ExtractedBlock, left_cutoff: f32, right_cutoff: f32) -> bool {
+    let trimmed = block.text.trim();
+    if trimmed.is_empty() || trimmed.chars().count() > 3 {
+        return false;
+    }
+    if let Some(bounds) = &block.bounds {
+        let left = bounds.left().value;
+        let right = bounds.right().value;
+        // Block is entirely within left or right margin
+        right < left_cutoff || left > right_cutoff
+    } else {
+        false
+    }
+}
+
+fn filter_blocks_recursive(blocks: &[ExtractedBlock], left_cutoff: f32, right_cutoff: f32) -> Vec<ExtractedBlock> {
+    blocks
+        .iter()
+        .filter_map(|block| {
+            if !block.children.is_empty() {
+                let filtered_children = filter_blocks_recursive(&block.children, left_cutoff, right_cutoff);
+                if filtered_children.is_empty() {
+                    return None;
+                }
+                Some(ExtractedBlock {
+                    children: filtered_children,
+                    ..block.clone()
+                })
+            } else if is_sidebar_block(block, left_cutoff, right_cutoff) {
+                None
+            } else {
+                Some(block.clone())
+            }
+        })
+        .collect()
+}
+
 /// Convert extracted blocks from the structure tree API into PdfParagraphs.
 ///
 /// Structure tree heading levels are validated against font size and word count
@@ -458,7 +533,7 @@ fn filter_sidebar_characters(char_infos: &mut Vec<CharInfo>, page_width: f32) {
         return;
     }
 
-    let margin_band = page_width * 0.05;
+    let margin_band = page_width * 0.065;
 
     let margin_indices: Vec<usize> = char_infos
         .iter()
@@ -591,6 +666,7 @@ fn chars_to_segments(page: &PdfPage) -> Option<Vec<SegmentData>> {
 
     // Filter out sidebar/margin characters (e.g., arXiv identifiers along left margin).
     let page_width = page.width().value;
+    // Debug: show chars with smallest x values on this page
     filter_sidebar_characters(&mut char_infos, page_width);
 
     if char_infos.is_empty() {

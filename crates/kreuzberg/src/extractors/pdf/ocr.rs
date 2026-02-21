@@ -237,5 +237,16 @@ pub(crate) async fn extract_with_ocr(content: &[u8], config: &ExtractionConfig) 
         page_texts.push(ocr_result.content);
     }
 
-    Ok(page_texts.join("\n\n"))
+    let page_marker_cfg = config.pages.as_ref().filter(|p| p.insert_page_markers);
+    let mut result = String::new();
+    for (i, text) in page_texts.iter().enumerate() {
+        if let Some(cfg) = page_marker_cfg {
+            let marker = cfg.marker_format.replace("{page_num}", &(i + 1).to_string());
+            result.push_str(&marker);
+        } else if i > 0 {
+            result.push_str("\n\n");
+        }
+        result.push_str(text);
+    }
+    Ok(result)
 }

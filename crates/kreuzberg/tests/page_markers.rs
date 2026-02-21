@@ -271,6 +271,112 @@ fn test_empty_page_gets_marker() {
     );
 }
 
+/// Test page markers are inserted in markdown output format (regression test for #412).
+#[test]
+fn test_page_markers_in_markdown_output() {
+    if skip_if_missing("pdfs/sample.pdf") {
+        return;
+    }
+
+    let file_path = get_test_file_path("pdfs/sample.pdf");
+    let config = ExtractionConfig {
+        output_format: kreuzberg::OutputFormat::Markdown,
+        pages: Some(PageConfig {
+            insert_page_markers: true,
+            marker_format: "<!-- PAGE {page_num} -->".to_string(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result = extract_file_sync(&file_path, None, &config).expect("Failed to extract PDF as markdown");
+
+    assert!(
+        result.content.contains("<!-- PAGE 1 -->"),
+        "Markdown output should contain page marker for page 1. Content start: {}",
+        &result.content[..result.content.len().min(300)]
+    );
+}
+
+/// Test page markers with custom format in markdown output (regression test for #412).
+#[test]
+fn test_page_markers_custom_format_markdown() {
+    if skip_if_missing("pdfs/sample.pdf") {
+        return;
+    }
+
+    let file_path = get_test_file_path("pdfs/sample.pdf");
+    let config = ExtractionConfig {
+        output_format: kreuzberg::OutputFormat::Markdown,
+        pages: Some(PageConfig {
+            insert_page_markers: true,
+            marker_format: "<page number=\"{page_num}\">".to_string(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result = extract_file_sync(&file_path, None, &config).expect("Failed to extract PDF as markdown");
+
+    assert!(
+        result.content.contains("<page number=\"1\">"),
+        "Markdown output should contain custom page marker. Content start: {}",
+        &result.content[..result.content.len().min(300)]
+    );
+}
+
+/// Test no page markers in markdown when disabled.
+#[test]
+fn test_no_markers_in_markdown_when_disabled() {
+    if skip_if_missing("pdfs/sample.pdf") {
+        return;
+    }
+
+    let file_path = get_test_file_path("pdfs/sample.pdf");
+    let config = ExtractionConfig {
+        output_format: kreuzberg::OutputFormat::Markdown,
+        pages: Some(PageConfig {
+            insert_page_markers: false,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result = extract_file_sync(&file_path, None, &config).expect("Failed to extract PDF as markdown");
+
+    assert!(
+        !result.content.contains("<!-- PAGE"),
+        "Markdown output should not contain markers when disabled"
+    );
+}
+
+/// Test page markers are inserted in djot output format.
+#[test]
+fn test_page_markers_in_djot_output() {
+    if skip_if_missing("pdfs/sample.pdf") {
+        return;
+    }
+
+    let file_path = get_test_file_path("pdfs/sample.pdf");
+    let config = ExtractionConfig {
+        output_format: kreuzberg::OutputFormat::Djot,
+        pages: Some(PageConfig {
+            insert_page_markers: true,
+            marker_format: "<!-- PAGE {page_num} -->".to_string(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let result = extract_file_sync(&file_path, None, &config).expect("Failed to extract PDF as djot");
+
+    assert!(
+        result.content.contains("<!-- PAGE 1 -->"),
+        "Djot output should contain page marker for page 1. Content start: {}",
+        &result.content[..result.content.len().min(300)]
+    );
+}
+
 /// Test marker format with multiple placeholders (edge case).
 #[test]
 fn test_marker_format_multiple_placeholders() {

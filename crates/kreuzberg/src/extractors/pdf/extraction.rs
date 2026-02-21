@@ -73,12 +73,19 @@ pub(crate) fn extract_all_from_document(
             .map(|opts| (opts.top_margin_fraction, opts.bottom_margin_fraction))
             .unwrap_or((None, None));
 
+        let page_marker_format = config
+            .pages
+            .as_ref()
+            .filter(|p| p.insert_page_markers)
+            .map(|p| p.marker_format.as_str());
+
         match crate::pdf::markdown::render_document_as_markdown_with_tables(
             document,
             k,
             &tables,
             top_margin,
             bottom_margin,
+            page_marker_format,
         ) {
             Ok(md) if !md.trim().is_empty() => Some(md),
             Ok(_) => {

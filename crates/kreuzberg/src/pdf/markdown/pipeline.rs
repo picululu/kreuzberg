@@ -7,13 +7,14 @@ use pdfium_render::prelude::*;
 use super::assembly::assemble_markdown_with_tables;
 use super::bridge::{
     ImagePosition, apply_ligature_repairs, build_ligature_repair_map, extracted_blocks_to_paragraphs,
-    objects_to_page_data, repair_contextual_ligatures, text_has_ligature_corruption,
+    filter_sidebar_blocks, objects_to_page_data, repair_contextual_ligatures, text_has_ligature_corruption,
 };
 use super::classify::{classify_paragraphs, refine_heading_hierarchy};
 use super::constants::{
-    MIN_FONT_SIZE, MIN_HEADING_FONT_GAP, MIN_HEADING_FONT_RATIO, PAGE_BOTTOM_MARGIN_FRACTION, PAGE_TOP_MARGIN_FRACTION,
+    FULL_LINE_FRACTION, MIN_DEHYPHENATION_FRAGMENT_LEN, MIN_FONT_SIZE, MIN_HEADING_FONT_GAP, MIN_HEADING_FONT_RATIO,
+    PAGE_BOTTOM_MARGIN_FRACTION, PAGE_TOP_MARGIN_FRACTION,
 };
-use super::lines::segments_to_lines;
+use super::lines::{is_cjk_char, segments_to_lines};
 use super::paragraphs::{lines_to_paragraphs, merge_continuation_paragraphs};
 use super::render::inject_image_placeholders;
 use super::types::PdfParagraph;
@@ -25,6 +26,7 @@ pub fn render_document_as_markdown_with_tables(
     tables: &[crate::types::Table],
     top_margin: Option<f32>,
     bottom_margin: Option<f32>,
+    page_marker_format: Option<&str>,
 ) -> Result<String> {
     let pages = document.pages();
     let page_count = pages.len();
@@ -40,7 +42,9 @@ pub fn render_document_as_markdown_with_tables(
 
         match extract_page_content(&page) {
             Ok(extraction) if extraction.method == ExtractionMethod::StructureTree && !extraction.blocks.is_empty() => {
-                let mut paragraphs = extracted_blocks_to_paragraphs(&extraction.blocks);
+                let page_width = page.width().value;
+                let filtered_blocks = filter_sidebar_blocks(&extraction.blocks, page_width);
+                let mut paragraphs = extracted_blocks_to_paragraphs(&filtered_blocks);
                 // Apply ligature repair to structure tree text (the structure tree
                 // path bypasses chars_to_segments where repair normally happens).
                 // First try error-flag-based repair, then fall back to contextual
@@ -77,6 +81,9 @@ pub fn render_document_as_markdown_with_tables(
                         }
                     }
                 }
+                // Dehyphenate: structure tree path has no positional data,
+                // so only rejoin explicit trailing hyphens.
+                dehyphenate_paragraphs(&mut paragraphs, false);
                 if paragraphs.is_empty() {
                     struct_tree_results.push(None);
                     heuristic_pages.push(i as usize);
@@ -227,6 +234,9 @@ pub fn render_document_as_markdown_with_tables(
                     }
                 }
             }
+            // Dehyphenate: heuristic path has positional data for
+            // full-line detection, enabling both hyphen and no-hyphen joins.
+            dehyphenate_paragraphs(&mut paragraphs, true);
             all_page_paragraphs.push(paragraphs);
         }
     }
@@ -236,7 +246,7 @@ pub fn render_document_as_markdown_with_tables(
     refine_heading_hierarchy(&mut all_page_paragraphs);
 
     // Stage 4: Assemble markdown with tables interleaved
-    let markdown = assemble_markdown_with_tables(all_page_paragraphs, tables);
+    let markdown = assemble_markdown_with_tables(all_page_paragraphs, tables, page_marker_format);
 
     // Stage 5: Inject image placeholders from positions collected during object extraction
     if all_image_positions.is_empty() {
@@ -294,5 +304,395 @@ fn filter_standalone_page_numbers(segments: &mut Vec<SegmentData>) {
     // Remove in reverse order to preserve indices
     for &idx in candidates.iter().rev() {
         segments.remove(idx);
+    }
+}
+
+/// Dehyphenate paragraphs by rejoining words split across line boundaries.
+///
+/// When `has_positions` is true (heuristic extraction path), both explicit
+/// trailing hyphens and implicit breaks (no hyphen, full line) are handled.
+/// When false (structure tree path with x=0, width=0), only explicit trailing
+/// hyphens are rejoined to avoid false positives.
+fn dehyphenate_paragraphs(paragraphs: &mut [PdfParagraph], has_positions: bool) {
+    for para in paragraphs.iter_mut() {
+        if para.is_code_block || para.lines.len() < 2 {
+            continue;
+        }
+        if has_positions {
+            dehyphenate_paragraph_lines(para);
+        } else {
+            dehyphenate_hyphen_only(para);
+        }
+    }
+}
+
+/// Core dehyphenation with position-based full-line detection.
+///
+/// For each line boundary, checks whether the line extends close to the right
+/// margin. If so, attempts to rejoin the trailing word of one line with the
+/// leading word of the next.
+fn dehyphenate_paragraph_lines(para: &mut PdfParagraph) {
+    // Compute max right edge across all lines.
+    let max_right_edge = para
+        .lines
+        .iter()
+        .filter_map(|line| line.segments.last().map(|seg| seg.x + seg.width))
+        .fold(0.0_f32, f32::max);
+
+    if max_right_edge <= 0.0 {
+        // No positional data — fall back to hyphen-only.
+        dehyphenate_hyphen_only(para);
+        return;
+    }
+
+    let threshold = max_right_edge * FULL_LINE_FRACTION;
+
+    // Process line boundaries from last to first so index shifts don't
+    // invalidate earlier indices.
+    let line_count = para.lines.len();
+    for i in (0..line_count - 1).rev() {
+        let line_right = para.lines[i]
+            .segments
+            .last()
+            .map(|seg| seg.x + seg.width)
+            .unwrap_or(0.0);
+        let is_full_line = line_right >= threshold;
+
+        if !is_full_line {
+            continue;
+        }
+
+        // Get trailing word from last segment of current line.
+        let trailing_seg_text = match para.lines[i].segments.last() {
+            Some(seg) if !seg.text.is_empty() => seg.text.clone(),
+            _ => continue,
+        };
+        let trailing_word = match trailing_seg_text.split_whitespace().next_back() {
+            Some(w) => w.to_string(),
+            None => continue,
+        };
+
+        // Get leading word from first segment of next line.
+        let leading_seg_text = match para.lines[i + 1].segments.first() {
+            Some(seg) if !seg.text.is_empty() => seg.text.clone(),
+            _ => continue,
+        };
+        let leading_word = match leading_seg_text.split_whitespace().next() {
+            Some(w) => w.to_string(),
+            None => continue,
+        };
+
+        // Skip if either word contains CJK characters.
+        if trailing_word.chars().any(is_cjk_char) || leading_word.chars().any(is_cjk_char) {
+            continue;
+        }
+
+        // Case 1: trailing hyphen
+        if trailing_word.ends_with('-') {
+            let stem = &trailing_word[..trailing_word.len() - 1];
+            if !stem.is_empty() && leading_word.starts_with(|c: char| c.is_lowercase()) {
+                let joined = format!("{}{}", stem, &leading_word);
+                apply_dehyphenation_join(para, i, &trailing_word, &leading_word, &joined);
+                continue;
+            }
+        }
+
+        // Case 2: no hyphen — full line, alphabetic fragments, lowercase continuation
+        let trailing_alpha: String = trailing_word.chars().filter(|c| c.is_alphabetic()).collect();
+        let leading_alpha: String = leading_word.chars().take_while(|c| c.is_alphabetic()).collect();
+        // Also consider trailing alphabetic chars after stripping leading punctuation
+        let leading_alpha_core: String = leading_word
+            .chars()
+            .skip_while(|c| !c.is_alphabetic())
+            .take_while(|c| c.is_alphabetic())
+            .collect();
+        let effective_leading_alpha = if leading_alpha.len() >= leading_alpha_core.len() {
+            &leading_alpha
+        } else {
+            &leading_alpha_core
+        };
+
+        if trailing_alpha.len() >= MIN_DEHYPHENATION_FRAGMENT_LEN
+            && effective_leading_alpha.len() >= MIN_DEHYPHENATION_FRAGMENT_LEN
+            && trailing_alpha.chars().all(|c| c.is_alphabetic())
+            && effective_leading_alpha.chars().all(|c| c.is_alphabetic())
+            && leading_word.starts_with(|c: char| c.is_lowercase())
+        {
+            let joined = format!("{}{}", &trailing_word, &leading_word);
+            apply_dehyphenation_join(para, i, &trailing_word, &leading_word, &joined);
+        }
+    }
+}
+
+/// Fallback dehyphenation for structure tree path (no positional data).
+///
+/// Only handles Case 1: explicit trailing hyphens with lowercase continuation.
+fn dehyphenate_hyphen_only(para: &mut PdfParagraph) {
+    let line_count = para.lines.len();
+    for i in (0..line_count - 1).rev() {
+        let trailing_seg_text = match para.lines[i].segments.last() {
+            Some(seg) if !seg.text.is_empty() => seg.text.clone(),
+            _ => continue,
+        };
+        let trailing_word = match trailing_seg_text.split_whitespace().next_back() {
+            Some(w) => w.to_string(),
+            None => continue,
+        };
+
+        if !trailing_word.ends_with('-') {
+            continue;
+        }
+
+        let leading_seg_text = match para.lines[i + 1].segments.first() {
+            Some(seg) if !seg.text.is_empty() => seg.text.clone(),
+            _ => continue,
+        };
+        let leading_word = match leading_seg_text.split_whitespace().next() {
+            Some(w) => w.to_string(),
+            None => continue,
+        };
+
+        if trailing_word.chars().any(is_cjk_char) || leading_word.chars().any(is_cjk_char) {
+            continue;
+        }
+
+        let stem = &trailing_word[..trailing_word.len() - 1];
+        if !stem.is_empty() && leading_word.starts_with(|c: char| c.is_lowercase()) {
+            let joined = format!("{}{}", stem, &leading_word);
+            apply_dehyphenation_join(para, i, &trailing_word, &leading_word, &joined);
+        }
+    }
+}
+
+/// Mutate segment text to apply a dehyphenation join.
+///
+/// Replaces the trailing word in the last segment of `line_idx` with `joined`,
+/// and removes the leading word from the first segment of `line_idx + 1`.
+fn apply_dehyphenation_join(
+    para: &mut PdfParagraph,
+    line_idx: usize,
+    trailing_word: &str,
+    leading_word: &str,
+    joined: &str,
+) {
+    // Replace trailing word in last segment of current line.
+    if let Some(seg) = para.lines[line_idx].segments.last_mut()
+        && let Some(pos) = seg.text.rfind(trailing_word)
+    {
+        seg.text.replace_range(pos..pos + trailing_word.len(), joined);
+    }
+
+    // Remove leading word from first segment of next line.
+    if let Some(seg) = para.lines[line_idx + 1].segments.first_mut()
+        && let Some(pos) = seg.text.find(leading_word)
+    {
+        let end = pos + leading_word.len();
+        // Also remove any trailing whitespace after the removed word.
+        let trim_end = seg.text[end..]
+            .find(|c: char| !c.is_whitespace())
+            .map_or(seg.text.len(), |off| end + off);
+        seg.text.replace_range(pos..trim_end, "");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pdf::hierarchy::SegmentData;
+    use crate::pdf::markdown::types::{PdfLine, PdfParagraph};
+
+    /// Helper: create a segment with positional data.
+    fn seg(text: &str, x: f32, width: f32) -> SegmentData {
+        SegmentData {
+            text: text.to_string(),
+            x,
+            y: 0.0,
+            width,
+            height: 12.0,
+            font_size: 12.0,
+            is_bold: false,
+            is_italic: false,
+            is_monospace: false,
+            baseline_y: 0.0,
+        }
+    }
+
+    fn line(segments: Vec<SegmentData>) -> PdfLine {
+        PdfLine {
+            segments,
+            baseline_y: 0.0,
+            dominant_font_size: 12.0,
+            is_bold: false,
+            is_monospace: false,
+        }
+    }
+
+    fn para(lines: Vec<PdfLine>) -> PdfParagraph {
+        PdfParagraph {
+            lines,
+            dominant_font_size: 12.0,
+            heading_level: None,
+            is_bold: false,
+            is_list_item: false,
+            is_code_block: false,
+        }
+    }
+
+    /// Full-width line at x=10, width=490 → right edge 500.
+    fn full_line_seg(text: &str) -> SegmentData {
+        seg(text, 10.0, 490.0)
+    }
+
+    /// Short line at x=10, width=100 → right edge 110 (well below 500*0.85=425).
+    fn short_line_seg(text: &str) -> SegmentData {
+        seg(text, 10.0, 100.0)
+    }
+
+    #[test]
+    fn test_case1_trailing_hyphen_full_line() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("some soft-")]),
+            line(vec![seg("ware is great", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        assert_eq!(p.lines[0].segments[0].text, "some software");
+        assert_eq!(p.lines[1].segments[0].text, "is great");
+    }
+
+    #[test]
+    fn test_case2_no_hyphen_full_line() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("the soft")]),
+            line(vec![seg("ware is great", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        assert_eq!(p.lines[0].segments[0].text, "the software");
+        assert_eq!(p.lines[1].segments[0].text, "is great");
+    }
+
+    #[test]
+    fn test_short_line_no_join() {
+        let mut p = para(vec![
+            line(vec![short_line_seg("hello")]),
+            line(vec![full_line_seg("world and more")]),
+        ]);
+        let original_trailing = p.lines[0].segments[0].text.clone();
+        let original_leading = p.lines[1].segments[0].text.clone();
+        dehyphenate_paragraph_lines(&mut p);
+        // Short line → no joining.
+        assert_eq!(p.lines[0].segments[0].text, original_trailing);
+        assert_eq!(p.lines[1].segments[0].text, original_leading);
+    }
+
+    #[test]
+    fn test_code_block_not_joined() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("some soft-")]),
+            line(vec![seg("ware is code", 10.0, 200.0)]),
+        ]);
+        p.is_code_block = true;
+        let mut paragraphs = vec![p];
+        dehyphenate_paragraphs(&mut paragraphs, true);
+        assert_eq!(paragraphs[0].lines[0].segments[0].text, "some soft-");
+    }
+
+    #[test]
+    fn test_uppercase_leading_not_joined() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("some text")]),
+            line(vec![seg("Next sentence here", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        // Uppercase leading word → no joining.
+        assert_eq!(p.lines[0].segments[0].text, "some text");
+        assert_eq!(p.lines[1].segments[0].text, "Next sentence here");
+    }
+
+    #[test]
+    fn test_cjk_not_joined() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("some \u{4E00}-")]),
+            line(vec![seg("text here", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        // CJK trailing word → no joining.
+        assert_eq!(p.lines[0].segments[0].text, "some \u{4E00}-");
+    }
+
+    #[test]
+    fn test_real_world_software() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("advanced soft")]),
+            line(vec![seg("ware development", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        assert_eq!(p.lines[0].segments[0].text, "advanced software");
+        assert_eq!(p.lines[1].segments[0].text, "development");
+    }
+
+    #[test]
+    fn test_real_world_hardware() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("modern hard")]),
+            line(vec![seg("ware components", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        assert_eq!(p.lines[0].segments[0].text, "modern hardware");
+        assert_eq!(p.lines[1].segments[0].text, "components");
+    }
+
+    #[test]
+    fn test_leading_word_with_trailing_punctuation() {
+        let mut p = para(vec![
+            line(vec![full_line_seg("the soft")]),
+            line(vec![seg("ware, which is great", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        assert_eq!(p.lines[0].segments[0].text, "the software,");
+        assert_eq!(p.lines[1].segments[0].text, "which is great");
+    }
+
+    #[test]
+    fn test_hyphen_only_fallback() {
+        let mut p = para(vec![
+            line(vec![seg("some soft-", 0.0, 0.0)]),
+            line(vec![seg("ware is great", 0.0, 0.0)]),
+        ]);
+        dehyphenate_hyphen_only(&mut p);
+        assert_eq!(p.lines[0].segments[0].text, "some software");
+        assert_eq!(p.lines[1].segments[0].text, "is great");
+    }
+
+    #[test]
+    fn test_hyphen_only_uppercase_not_joined() {
+        let mut p = para(vec![
+            line(vec![seg("some well-", 0.0, 0.0)]),
+            line(vec![seg("Known thing", 0.0, 0.0)]),
+        ]);
+        dehyphenate_hyphen_only(&mut p);
+        // Uppercase leading → not joined.
+        assert_eq!(p.lines[0].segments[0].text, "some well-");
+    }
+
+    #[test]
+    fn test_single_line_paragraph_skipped() {
+        let mut paragraphs = vec![para(vec![line(vec![full_line_seg("single line")])])];
+        dehyphenate_paragraphs(&mut paragraphs, true);
+        assert_eq!(paragraphs[0].lines[0].segments[0].text, "single line");
+    }
+
+    #[test]
+    fn test_multi_segment_line() {
+        // Trailing word is in the last segment of the line.
+        let mut p = para(vec![
+            line(vec![
+                seg("first part", 10.0, 200.0),
+                seg("soft", 220.0, 280.0), // right edge = 500
+            ]),
+            line(vec![seg("ware next words", 10.0, 200.0)]),
+        ]);
+        dehyphenate_paragraph_lines(&mut p);
+        assert_eq!(p.lines[0].segments[1].text, "software");
+        assert_eq!(p.lines[1].segments[0].text, "next words");
     }
 }

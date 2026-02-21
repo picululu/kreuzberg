@@ -27,3 +27,9 @@ pub(super) const PAGE_BOTTOM_MARGIN_FRACTION: f32 = 0.05;
 pub(super) const MIN_FONT_SIZE: f32 = 4.0;
 /// Maximum word count for a bold paragraph to be promoted to a section heading.
 pub(super) const MAX_BOLD_HEADING_WORD_COUNT: usize = 15;
+/// Fraction of the maximum right edge that a line must reach to be considered "full"
+/// (used for dehyphenation to avoid false joins on short/indented lines).
+pub(super) const FULL_LINE_FRACTION: f32 = 0.85;
+/// Minimum alphabetic character count for a word fragment to be eligible for
+/// dehyphenation joining (prevents false positives on short words like "a", "I").
+pub(super) const MIN_DEHYPHENATION_FRAGMENT_LEN: usize = 2;

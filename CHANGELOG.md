@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **PDF ligature corruption in CM/Type1 fonts**: Added contextual ligature repair for PDFs with broken ToUnicode CMaps where pdfium doesn't flag encoding errors. Fixes corrupted text like `di!erent` → `different`, `o"ces` → `offices`, `#nancial` → `financial` in LaTeX-generated PDFs. Uses vowel/consonant heuristic to disambiguate ambiguous ligature mappings. Applied to both structure tree and heuristic extraction paths.
+- **PDF dehyphenation across line boundaries**: Added paragraph-level dehyphenation that rejoins words broken across PDF line breaks (e.g. `soft ware` → `software`, `recog nition` → `recognition`). Handles both explicit trailing hyphens (Case 1) and implicit breaks where pdfium strips the hyphen (Case 2, using full-line detection). Applied to both structure tree and heuristic extraction paths.
+- **PDF page markers missing in Markdown and OCR output** (#412): Page markers (`insert_page_markers` / `marker_format`) were not inserted when using Markdown output format or OCR extraction since the 4.3.5 pipeline rewrite. Fixed by threading the marker format through the markdown assembly pipeline and OCR page joining. Djot output inherits markers automatically.
+- **PDF sidebar text pollution**: Widened the margin band for sidebar character filtering from 5% to 6.5% of page width, fixing cases where rotated sidebar text (e.g. arXiv identifiers) leaked into extracted content.
 - **Node.js PDF config options not passed to native binding**: Fixed `extractAnnotations`, `hierarchy`, `topMarginFraction`, and `bottomMarginFraction` PDF config fields being silently dropped by the TypeScript config normalizer, causing PDF annotation extraction to always return `undefined` in the Node.js binding.
 
 ---

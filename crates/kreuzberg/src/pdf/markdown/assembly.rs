@@ -8,7 +8,11 @@ use super::types::PdfParagraph;
 /// Tables are matched to pages by their `page_number` (1-indexed). Within a page,
 /// tables with bounding boxes are placed at the correct vertical position relative to
 /// paragraphs. Tables without bounding boxes are appended at the end of their page.
-pub(super) fn assemble_markdown_with_tables(pages: Vec<Vec<PdfParagraph>>, tables: &[crate::types::Table]) -> String {
+pub(super) fn assemble_markdown_with_tables(
+    pages: Vec<Vec<PdfParagraph>>,
+    tables: &[crate::types::Table],
+    page_marker_format: Option<&str>,
+) -> String {
     // Group tables by page number (1-indexed → 0-indexed)
     let mut tables_by_page: std::collections::BTreeMap<usize, Vec<&crate::types::Table>> =
         std::collections::BTreeMap::new();
@@ -24,7 +28,10 @@ pub(super) fn assemble_markdown_with_tables(pages: Vec<Vec<PdfParagraph>>, table
     let mut output = String::new();
 
     for (page_idx, paragraphs) in pages.iter().enumerate() {
-        if page_idx > 0 && !output.is_empty() {
+        if let Some(fmt) = page_marker_format {
+            let marker = fmt.replace("{page_num}", &(page_idx + 1).to_string());
+            output.push_str(&marker);
+        } else if page_idx > 0 && !output.is_empty() {
             output.push_str("\n\n");
         }
 
@@ -185,13 +192,13 @@ mod tests {
             make_paragraph("Title", Some(1)),
             make_paragraph("Body text", None),
         ]];
-        let result = assemble_markdown_with_tables(pages, &[]);
+        let result = assemble_markdown_with_tables(pages, &[], None);
         assert_eq!(result, "# Title\n\nBody text");
     }
 
     #[test]
     fn test_assemble_markdown_empty() {
-        let result = assemble_markdown_with_tables(vec![], &[]);
+        let result = assemble_markdown_with_tables(vec![], &[], None);
         assert_eq!(result, "");
     }
 
@@ -201,14 +208,14 @@ mod tests {
             vec![make_paragraph("Page 1", None)],
             vec![make_paragraph("Page 2", None)],
         ];
-        let result = assemble_markdown_with_tables(pages, &[]);
+        let result = assemble_markdown_with_tables(pages, &[], None);
         assert_eq!(result, "Page 1\n\nPage 2");
     }
 
     #[test]
     fn test_assemble_with_tables_no_tables() {
         let pages = vec![vec![make_paragraph("Body", None)]];
-        let result = assemble_markdown_with_tables(pages, &[]);
+        let result = assemble_markdown_with_tables(pages, &[], None);
         assert_eq!(result, "Body");
     }
 
@@ -221,7 +228,7 @@ mod tests {
             page_number: 1,
             bounding_box: None,
         }];
-        let result = assemble_markdown_with_tables(pages, &tables);
+        let result = assemble_markdown_with_tables(pages, &tables, None);
         assert!(result.starts_with("Before"));
         assert!(result.contains("| A | B |"));
     }
@@ -244,7 +251,7 @@ mod tests {
                 y1: 500.0,
             }),
         }];
-        let result = assemble_markdown_with_tables(pages, &tables);
+        let result = assemble_markdown_with_tables(pages, &tables, None);
         let parts: Vec<&str> = result.split("\n\n").collect();
         assert_eq!(parts.len(), 3);
         assert_eq!(parts[0], "Top text");
@@ -264,7 +271,7 @@ mod tests {
             page_number: 2,
             bounding_box: None,
         }];
-        let result = assemble_markdown_with_tables(pages, &tables);
+        let result = assemble_markdown_with_tables(pages, &tables, None);
         assert!(result.contains("Page 1"));
         assert!(result.contains("Page 2"));
         assert!(result.contains("| Table |"));
@@ -272,5 +279,70 @@ mod tests {
         let page2_start = result.find("Page 2").unwrap();
         let table_pos = result.find("| Table |").unwrap();
         assert!(table_pos > page2_start);
+    }
+
+    #[test]
+    fn test_page_markers_inserted_for_all_pages() {
+        let pages = vec![
+            vec![make_paragraph("Page 1 content", None)],
+            vec![make_paragraph("Page 2 content", None)],
+            vec![make_paragraph("Page 3 content", None)],
+        ];
+        let marker_fmt = "\n\n<!-- PAGE {page_num} -->\n\n";
+        let result = assemble_markdown_with_tables(pages, &[], Some(marker_fmt));
+        assert!(result.contains("<!-- PAGE 1 -->"));
+        assert!(result.contains("<!-- PAGE 2 -->"));
+        assert!(result.contains("<!-- PAGE 3 -->"));
+        // Markers appear before page content
+        let m1 = result.find("<!-- PAGE 1 -->").unwrap();
+        let c1 = result.find("Page 1 content").unwrap();
+        assert!(m1 < c1);
+        let m2 = result.find("<!-- PAGE 2 -->").unwrap();
+        let c2 = result.find("Page 2 content").unwrap();
+        assert!(m2 < c2);
+    }
+
+    #[test]
+    fn test_page_markers_custom_format() {
+        let pages = vec![
+            vec![make_paragraph("First", None)],
+            vec![make_paragraph("Second", None)],
+        ];
+        let marker_fmt = "<page number=\"{page_num}\">";
+        let result = assemble_markdown_with_tables(pages, &[], Some(marker_fmt));
+        assert!(result.contains("<page number=\"1\">"));
+        assert!(result.contains("<page number=\"2\">"));
+    }
+
+    #[test]
+    fn test_no_markers_when_none() {
+        let pages = vec![vec![make_paragraph("A", None)], vec![make_paragraph("B", None)]];
+        let result = assemble_markdown_with_tables(pages, &[], None);
+        assert!(!result.contains("PAGE"));
+        assert!(!result.contains("page"));
+        assert_eq!(result, "A\n\nB");
+    }
+
+    #[test]
+    fn test_page_markers_with_tables() {
+        let pages = vec![
+            vec![make_paragraph("Page 1", None)],
+            vec![make_paragraph("Page 2", None)],
+        ];
+        let tables = vec![crate::types::Table {
+            cells: vec![],
+            markdown: "| T |".to_string(),
+            page_number: 2,
+            bounding_box: None,
+        }];
+        let marker_fmt = "\n\n<!-- PAGE {page_num} -->\n\n";
+        let result = assemble_markdown_with_tables(pages, &tables, Some(marker_fmt));
+        assert!(result.contains("<!-- PAGE 1 -->"));
+        assert!(result.contains("<!-- PAGE 2 -->"));
+        assert!(result.contains("| T |"));
+        // Table appears after page 2 marker
+        let m2 = result.find("<!-- PAGE 2 -->").unwrap();
+        let t = result.find("| T |").unwrap();
+        assert!(t > m2);
     }
 }
