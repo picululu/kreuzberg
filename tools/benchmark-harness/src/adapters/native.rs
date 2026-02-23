@@ -438,12 +438,39 @@ impl FrameworkAdapter for NativeAdapter {
     }
 
     async fn setup(&self) -> Result<()> {
+        // Warm up the extraction pipeline: trigger lazy statics, plugin discovery,
+        // allocator warmup, etc. — equivalent to subprocess adapters' READY handshake.
+        let warmup_pdf = tempfile::Builder::new()
+            .suffix(".pdf")
+            .tempfile()
+            .map_err(|e| Error::Benchmark(format!("Failed to create warmup file: {e}")))?;
+        std::fs::write(warmup_pdf.path(), minimal_pdf_bytes())
+            .map_err(|e| Error::Benchmark(format!("Failed to write warmup file: {e}")))?;
+        let _ = extract_file(warmup_pdf.path(), None, &self.config).await;
         Ok(())
     }
 
     async fn teardown(&self) -> Result<()> {
         Ok(())
     }
+}
+
+/// Minimal valid PDF document for warmup extractions.
+fn minimal_pdf_bytes() -> &'static [u8] {
+    b"%PDF-1.0
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+3 0 obj<</Type/Page/MediaBox[0 0 3 3]/Parent 2 0 R/Resources<<>>>>endobj
+xref
+0 4
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+trailer<</Size 4/Root 1 0 R>>
+startxref
+206
+%%EOF"
 }
 
 #[cfg(test)]

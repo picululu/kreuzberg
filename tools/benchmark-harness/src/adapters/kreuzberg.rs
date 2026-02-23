@@ -372,7 +372,7 @@ pub fn create_rust_paddle_subprocess_adapter(ocr_enabled: bool) -> Result<Subpro
     let mut args = vec![ocr_flag(ocr_enabled)];
     if ocr_enabled {
         args.push("--ocr-backend".to_string());
-        args.push("paddleocr".to_string());
+        args.push("paddle-ocr".to_string());
     }
 
     let supported_formats = get_kreuzberg_supported_formats();

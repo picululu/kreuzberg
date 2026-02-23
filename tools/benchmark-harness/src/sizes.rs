@@ -78,6 +78,12 @@ fn system_deps_bytes(framework: &str) -> u64 {
         "docling" => 25_000_000,
         // JRE/JDK ~200MB (required to run Tika JAR)
         "tika" => 200_000_000,
+        // poppler-utils ~20MB (required by pdftotext Python binding)
+        "pdftotext" => 20_000_000,
+        // PyMuPDF bundles MuPDF native libs ~30MB
+        "pymupdf4llm" => 30_000_000,
+        // pdfminer.six + Pillow native ~15MB
+        "pdfplumber" => 15_000_000,
         _ => 0,
     }
 }
@@ -205,21 +211,31 @@ fn extract_package_name(framework: &str) -> &str {
 /// isolated venv, capturing deps like torch/transformers that dominate the
 /// actual installation footprint.
 fn measure_pip_package(package: &str) -> Result<Option<u64>> {
-    // For native packages (e.g. kreuzberg installed via maturin develop),
-    // use Python to find the actual package directory which includes the native .so.
-    // This is more reliable than parsing pip show output for editable installs.
-    if let Some(size) = measure_pip_package_via_python(package) {
+    // For kreuzberg (native editable install via maturin develop), use Python
+    // to find the actual package directory which includes the native .so.
+    if package == "kreuzberg"
+        && let Some(size) = measure_pip_package_via_python(package)
+    {
         return Ok(Some(size));
     }
 
-    // For third-party packages, use pip-weigh to get accurate total size
-    // including all transitive dependencies in an isolated environment.
+    // For third-party packages, try pip-weigh first to get accurate total size
+    // including all transitive dependencies. pip-weigh creates an isolated venv,
+    // installs the package, and measures via .dist-info/RECORD.
+    // This MUST run before measure_pip_package_via_python, which only measures
+    // the single package directory (e.g. 1.4MB for docling instead of 4GB with torch).
     if package != "kreuzberg"
         && let Some(size) = measure_pip_weigh(package)
     {
         return Ok(Some(size));
     }
 
+    // Fall back to Python module directory measurement
+    if let Some(size) = measure_pip_package_via_python(package) {
+        return Ok(Some(size));
+    }
+
+    // Last resort: parse uv pip show -f output
     let output = Command::new("uv")
         .args(["pip", "show", "-f", package])
         .output()
@@ -841,10 +857,10 @@ fn measure_pip_package_via_python(package: &str) -> Option<u64> {
     let path = Path::new(&pkg_dir);
     if path.exists() {
         let size = dir_size(path);
-        // Sanity check: if the directory is suspiciously small (< 1MB),
-        // it likely doesn't include the native extension. Return None to
-        // fall through to pip show parsing.
-        if size > 1_000_000 {
+        // Sanity check: reject truly empty/broken packages (< 10KB).
+        // Pure Python packages (pypdf, pdfminer.six, pdftotext) are legitimately
+        // small and should not be rejected.
+        if size > 10_000 {
             return Some(size);
         }
     }

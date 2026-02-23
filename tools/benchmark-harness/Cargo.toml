@@ -7,6 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage = "https://kreuzberg.dev"
+default-run = "benchmark-harness"
 
 [[bin]]
 name = "benchmark-harness"
@@ -42,9 +43,9 @@ shellexpand = "3"
 pprof = { version = "0.15", features = ["flamegraph", "criterion"], optional = true }
 tikv-jemallocator = { version = "0.6", optional = true }
 tikv-jemalloc-ctl = { version = "0.6", features = ["stats"], optional = true }
+tempfile = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 
 [features]
 default = []

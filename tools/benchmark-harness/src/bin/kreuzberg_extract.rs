@@ -40,6 +40,27 @@ fn main() {
         ..Default::default()
     };
 
+    // Warmup: validate that the configured OCR backend is available and trigger
+    // lazy initialization (plugin discovery, allocator warmup, etc.).
+    // If the backend isn't registered (e.g., PaddleOCR without ONNX Runtime),
+    // exit early so the harness reports an initialization failure instead of
+    // running N extractions that all fail with "not registered".
+    {
+        let warmup_dir = std::env::temp_dir();
+        let warmup_path = warmup_dir.join("kreuzberg-benchmark-warmup.pdf");
+        // Minimal valid PDF for warmup
+        let _ = std::fs::write(&warmup_path, b"%PDF-1.0\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 3 3]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n206\n%%EOF");
+        if let Err(e) = extract_file_sync(warmup_path.to_str().unwrap_or(""), None, &config) {
+            let err_str = format!("{}", e);
+            if err_str.contains("not registered") || err_str.contains("not available") {
+                eprintln!("Fatal: OCR backend '{}' not available: {}", ocr_backend, e);
+                std::process::exit(1);
+            }
+            // Other errors (e.g., empty PDF) are fine for warmup
+        }
+        let _ = std::fs::remove_file(&warmup_path);
+    }
+
     // Signal readiness
     println!("READY");
     io::stdout().flush().unwrap();

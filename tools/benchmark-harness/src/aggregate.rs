@@ -573,6 +573,11 @@ fn build_comparison(by_framework_mode: &HashMap<String, FrameworkModeAggregation
 
         for ft in agg.by_file_type.values() {
             for perf in [&ft.no_ocr, &ft.with_ocr].into_iter().flatten() {
+                // Skip groups where all samples failed — their 0.0 values would
+                // pollute rankings (e.g., docling showing 0.0ms when libGL is missing).
+                if perf.successful_sample_count == 0 {
+                    continue;
+                }
                 durations.push(perf.duration.p50);
                 throughputs.push(perf.throughput.p50);
                 memories.push(perf.memory.p50);

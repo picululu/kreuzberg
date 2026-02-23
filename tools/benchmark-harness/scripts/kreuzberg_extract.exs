@@ -42,6 +42,23 @@ defmodule KreuzbergExtract do
   def struct_to_map(value), do: value
 
   @doc """
+  Sanitize a binary to valid UTF-8 and strip control characters
+  that can break JSON encoding or the harness's UTF-8 line reader.
+  """
+  def sanitize_content(nil), do: ""
+  def sanitize_content(content) when is_binary(content) do
+    # Ensure valid UTF-8 — drop invalid byte sequences
+    valid_utf8 = case :unicode.characters_to_binary(content) do
+      {:error, valid_part, _invalid} -> valid_part
+      {:incomplete, valid_part, _rest} -> valid_part
+      valid when is_binary(valid) -> valid
+    end
+
+    # Strip control characters except \n, \r, \t (which Jason escapes properly)
+    String.replace(valid_utf8, ~r/[\x00-\x08\x0b\x0c\x0e-\x1f]/, "")
+  end
+
+  @doc """
   Determine if OCR was actually used based on extraction result metadata.
   Mirrors the native Rust adapter logic: OCR is used when format_type is "ocr",
   or when format_type is "image" and OCR was enabled in config.
@@ -94,8 +111,9 @@ defmodule KreuzbergExtract do
         debug_log("Metadata type: map")
 
         metadata = struct_to_map(extraction_result.metadata)
+        content = sanitize_content(extraction_result.content)
         payload = %{
-          "content" => extraction_result.content,
+          "content" => content,
           "metadata" => metadata,
           "_extraction_time_ms" => duration_ms,
           "_ocr_used" => determine_ocr_used(metadata, ocr_enabled)
@@ -161,8 +179,9 @@ defmodule KreuzbergExtract do
             debug_log("  Result[#{idx}] - content length: #{content_length}, has metadata: true")
 
             metadata = struct_to_map(extraction_result.metadata)
+            content = sanitize_content(extraction_result.content)
             %{
-              "content" => extraction_result.content,
+              "content" => content,
               "metadata" => metadata,
               "_extraction_time_ms" => per_file_duration_ms,
               "_batch_total_ms" => total_duration_ms,

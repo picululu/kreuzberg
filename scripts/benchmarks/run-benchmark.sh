@@ -23,6 +23,7 @@ source "${REPO_ROOT}/scripts/lib/library-paths.sh"
 validate_repo_root "$REPO_ROOT" || exit 1
 
 setup_go_paths "$REPO_ROOT"
+setup_onnx_paths
 
 OUTPUT_DIR="benchmark-results/${FRAMEWORK}-${MODE}"
 rm -rf "${OUTPUT_DIR}"
