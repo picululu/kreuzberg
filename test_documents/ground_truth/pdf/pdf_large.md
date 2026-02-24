@@ -60,4 +60,3 @@ Toronto, August 23, 2016
 - **100G Ethernet done**
 
 - **25G Ethernet has a new connector standard called *SFP28***
-
