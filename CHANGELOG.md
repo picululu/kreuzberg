@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PHP async extraction**: Non-blocking extraction via `DeferredResult` pattern with Tokio thread pool. Includes `extractFileAsync()`, `extractBytesAsync()`, `batchExtractFilesAsync()`, `batchExtractBytesAsync()` across OOP, procedural, and static APIs. Framework bridges for Amp v3+ (`AmpBridge`) and ReactPHP (`ReactBridge`).
 - **WASM native OCR** (`ocr-wasm` feature): Tesseract OCR compiled directly into the WASM binary via `kreuzberg-tesseract`, enabling OCR in all environments (Browser, Node.js, Deno, Bun) without browser-specific APIs. Supports 43 languages with tessdata downloaded from CDN into memory.
 - **WASM Node.js/Deno PDFium support**: PDFium initialization now works in Node.js and Deno by loading the WASM module from the filesystem. Configurable via `KREUZBERG_PDFIUM_PATH` environment variable.
+- **WASM full-feature build**: OCR, Excel, and archive extraction are now enabled by default in the WASM package. All `wasm-pack build` targets include the `ocr-wasm` feature.
+- **WASM Excel extraction** (`excel-wasm` feature): Calamine-based Excel/spreadsheet extraction available in WASM without requiring Tokio runtime.
+- **WASM archive extraction**: ZIP, TAR, 7z, and GZIP archive extraction now available in WASM via synchronous extractor implementations.
+- **WASM PDF annotations**: PDF annotations (text notes, highlights, links, stamps) are now exposed in the WASM TypeScript API via the `annotations` field on `ExtractionResult`.
+
+### Fixed
+
+- **WASM metadata serialization**: Fixed `#[serde(flatten)]` with internally-tagged enums dropping `format_type` and format-specific metadata fields. Switched from `serde_wasm_bindgen` to `serde_json` + `JSON.parse()` for output serialization.
+- **WASM config deserialization**: Fixed camelCase TypeScript config keys (e.g. `outputFormat`, `extractAnnotations`) not being recognized by Rust serde. Config keys are now converted to snake_case before passing to the WASM boundary.
+- **WASM PDFium module loading**: Fixed `copy-pkg.js` overwriting the real PDFium Emscripten module with a stub init helper. The build script now locates and copies the actual PDFium ESM module (`pdfium.esm.js` + `pdfium.esm.wasm`) from the Cargo build output, with a Deno compatibility fix for bare `import("module")`.
 
 ### Removed
 
