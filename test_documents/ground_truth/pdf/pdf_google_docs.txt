@@ -1,4 +1,5 @@
 Example document
+
 Beautiful is better than ugly.
 Explicit is better than implicit.
 Simple is better than complex.
@@ -19,23 +20,13 @@ If the implementation is hard to explain, it's a bad idea.
 If the implementation is easy to explain, it may be a good idea.
 Namespaces are one honking great idea -- let's do more of those!
 
+Indonesia Germany Austria France Vatican
 
+Continent Asia Europe
+Capital Jakarta Berlin Vienna Paris Vatican City
+Currency Rupia EUR (€) -
+Population 273.879.750 83,190,556 8,935,112 67,413,000 453
 
-                  Indonesia   🇮🇩 Germany 🇩🇪 Austria 🇦🇹 France                Vatican   🇻🇦
-    Continent     Asia                                    Europe
-
-    Capital       Jakarta         Berlin         Vienna        Paris         Vatican City
-
-    Currency      Rupia                           EUR (€)                    -
-
-    Population     273.879.7501    83,190,5562    8,935,1123    67,413,000             453
-
-
-
-
-1
-  2021 estimate
-2
-  2020 estimate
-3
-  2020 estimate
+2021 estimate
+2020 estimate
+2020 estimate

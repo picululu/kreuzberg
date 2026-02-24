@@ -17,8 +17,6 @@ SKU-7728 A-08 920
 
 Variance Analysis:
 
-Product Variance Analysis
-
 Summary Statistics:
 Total Variance Cost: $4,287.50
 Critical Items: 1

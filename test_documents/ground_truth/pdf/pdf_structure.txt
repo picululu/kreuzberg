@@ -17,6 +17,6 @@ a) Énumération imbriquée
 
 Tableau
 
-Chose	Truc
-Chose 1	Truc 1
-Chose 2	Truc 2
+Chose Truc
+Chose 1 Truc 1
+Chose 2 Truc 2
