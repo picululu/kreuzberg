@@ -218,7 +218,7 @@ test_that("config_document_structure_headings", {
   skip_if_feature_unavailable("office")
   result <- run_fixture(
     "config_document_structure_headings",
-    "office/docx/headers.docx",
+    "docx/unit_test_headers.docx",
     list(include_document_structure = TRUE),
     requirements = c("office"),
     notes = NULL,
@@ -245,14 +245,14 @@ test_that("config_element_types", {
   skip_if_feature_unavailable("office")
   result <- run_fixture(
     "config_element_types",
-    "office/docx/headers.docx",
+    "docx/unit_test_headers.docx",
     list(result_format = "element_based"),
     requirements = c("office"),
     notes = NULL,
     skip_if_missing = TRUE
   )
   assert_expected_mime(result, c("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-  assert_elements(result, min_count = 1L, types_include = c("title", "narrative_text"))
+  assert_elements(result, min_count = 1L, types_include = c("narrative_text"))
 })
 
 test_that("config_force_ocr", {

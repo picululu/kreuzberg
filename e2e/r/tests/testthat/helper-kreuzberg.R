@@ -269,7 +269,7 @@ assert_elements <- function(result, min_count = NULL, types_include = NULL) {
   elements <- if (is.null(result$elements)) list() else result$elements
   if (!is.null(min_count)) testthat::expect_gte(length(elements), min_count)
   if (!is.null(types_include)) {
-    found_types <- unique(vapply(elements, function(el) el$type %||% "", character(1)))
+    found_types <- unique(vapply(elements, function(el) el$element_type %||% "", character(1)))
     for (t in types_include) {
       testthat::expect_true(t %in% found_types)
     }
