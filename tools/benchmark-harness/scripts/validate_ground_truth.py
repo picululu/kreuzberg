@@ -89,8 +89,9 @@ def validate_ground_truth_structure(repo_root: Path) -> list[str]:
         if gt_file.stem.endswith("_meta"):
             continue
 
-        # Warn on very small files (likely placeholders)
-        if gt_file.stat().st_size < 10:
+        # Warn on very small files (likely placeholders).
+        # Some test documents genuinely have minimal content (e.g. "Home", "Text 1").
+        if gt_file.stat().st_size < 4:
             errors.append(f"Ground truth file suspiciously small ({gt_file.stat().st_size} bytes): {gt_file.relative_to(repo_root)}")
 
     print(f"Found {len(txt_files)} .txt and {len(md_files)} .md ground truth files")
