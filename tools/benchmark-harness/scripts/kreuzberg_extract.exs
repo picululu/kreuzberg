@@ -10,7 +10,17 @@ require Logger
 # Configure Logger to suppress debug messages and use stderr for all output
 # This ensures only the JSON result goes to stdout
 Logger.configure(level: :warning)
-Logger.configure_backend(:console, device: :standard_error)
+
+# Guard Logger backend configuration — :standard_error device may not be
+# available in all subprocess contexts, and writing to it during boot can
+# crash the BEAM VM with {badarg, io:put_chars(:standard_error, ...)}
+try do
+  Logger.configure_backend(:console, device: :standard_error)
+rescue
+  _ -> :ok
+catch
+  _, _ -> :ok
+end
 
 debug = System.get_env("KREUZBERG_BENCHMARK_DEBUG", "false") == "true"
 
@@ -419,7 +429,31 @@ defmodule KreuzbergExtract do
 end
 
 # Start the application and run main
-{:ok, _apps} = Application.ensure_all_started(:kreuzberg)
+case Application.ensure_all_started(:kreuzberg) do
+  {:ok, _apps} ->
+    :ok
+
+  {:error, reason} ->
+    # Write error to stderr (guard against missing device)
+    try do
+      IO.puts(:stderr, "Failed to start :kreuzberg application: #{inspect(reason)}")
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
+    end
+
+    # In server mode, output an error JSON so the harness doesn't see EOF
+    if Enum.member?(System.argv(), "server") do
+      IO.puts(Jason.encode!(%{
+        "error" => "Application startup failed: #{inspect(reason)}",
+        "_extraction_time_ms" => 0,
+        "_ocr_used" => false
+      }))
+    end
+
+    System.halt(1)
+end
 
 # Parse args and run
 args = System.argv()

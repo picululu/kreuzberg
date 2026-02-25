@@ -1,7 +1,14 @@
 #!/usr/bin/env tsx
 import * as readline from "node:readline";
 import * as path from "node:path";
-import { extractFile, initWasm, type ExtractionConfig } from "@kreuzberg/wasm";
+import {
+	enableOcr,
+	extractFile,
+	getWasmModule,
+	initializePdfiumAsync,
+	initWasm,
+	type ExtractionConfig,
+} from "@kreuzberg/wasm";
 
 interface ExtractionOutput {
 	content: string;
@@ -216,6 +223,27 @@ async function main(): Promise<void> {
 
 	// Initialize WASM BEFORE timing measurement
 	await initWasm();
+
+	// Ensure PDFium is fully initialized before processing any files.
+	// initWasm() fires off PDFium init asynchronously (fire-and-forget),
+	// so we must explicitly await it to avoid empty PDF results.
+	const wasmModule = getWasmModule();
+	if (wasmModule) {
+		try {
+			await initializePdfiumAsync(wasmModule);
+		} catch {
+			// PDFium not available — PDF extraction will be disabled
+		}
+	}
+
+	// Enable OCR backend when requested (required for image extraction)
+	if (ocrEnabled) {
+		try {
+			await enableOcr();
+		} catch (err) {
+			console.error("Failed to enable OCR:", (err as Error).message);
+		}
+	}
 
 	const mode = args[0];
 	const filePaths = args.slice(1);
