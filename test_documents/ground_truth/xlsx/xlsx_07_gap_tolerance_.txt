@@ -1,89 +1,175 @@
+Page 1
+
 HIGH VOLTAGE SWITCHBOARD
 
- DATA SHEET
+MODEL-000
 
- MODEL-000
+E-123
 
- 2016
- Page 1 of 10
+DATA SHEET
 
- E-123
+2016.0
 
+Page 1 of 10
 
- Package no.: Doc. no.: Rev.
+Package no.:
 
- 13156456 13156456 13156456 144564 144564 144564 144564 A
+Doc. no.:
 
- Functional requirements
+Rev.
 
+1.3156456e7
 
- Power system
+144564.0
 
- 1
- 2
- 3
- 4
- 5
- 6
- Construction
- 7
- 8
- 9
- Environmental conditions
- 10
- 11
- 12
- 13
- Arc test
- 14
- Notes
- 1
- 2
+A
 
- Rated system voltage
+Functional requirements
 
- Rated system frequency
- No. of phases
- System earthing
- Earth fault current
- Control voltage supply
+Power system
 
- kV : 130 (131 Um, 132 AC, 133 BIL)
+1.0
 
- Hz : 134
- : 3
- : Solidly Earthed
- A : 135 kA
- : 2 x 136V AC UPS 1 x 137V AC normal Note 1
+Rated system voltage
 
- Metal-enclosed partition
+kV
 
- VT for cable discharging
- Voltage and Current measurement
+:
 
- : Gas Insulated Switchgear (GIS) Non Sticky
+130 (131 Um, 132 AC, 133 BIL)
 
- No
- Low Power Instrument Transformers
+2.0
 
- Hazardous area classification
+Rated system frequency
 
- Ambient temp.
- Location
- Humidity
+Hz
 
- : Non hazardous
+:
 
- ºC : Min. -5, max. +40
- : Indoor
- % : 100
+134.0
 
- Arc testing
+3.0
+
+No. of phases
 
 
- Yes/no : Yes Note 2
+
+:
+
+3.0
+
+4.0
+
+System earthing
+
+:
+
+Solidly Earthed
+
+5.0
+
+Earth fault current
+
+A
+
+:
+
+135 kA
+
+6.0
+
+Control voltage supply
 
 
- Converted to 110VDC Converted to 110VDC Converted to 110VDC Converted to 110VDC Converted to 110VDC
 
- Arc test (type test) Arc test (type test) Arc test (type test) Arc test (type test) Arc test (type test)
+:
+
+2 x 136V AC UPS 1 x 137V AC normal
+
+Note 1
+
+Construction
+
+7.0
+
+Metal-enclosed partition
+
+:
+
+Gas Insulated Switchgear (GIS)
+
+Non Sticky
+
+8.0
+
+VT for cable discharging
+
+No
+
+9.0
+
+Voltage and Current measurement
+
+Low Power Instrument Transformers
+
+Environmental conditions
+
+10.0
+
+Hazardous area classification
+
+:
+
+Non hazardous
+
+11.0
+
+Ambient temp.
+
+ºC
+
+:
+
+Min. -5, max. +40
+
+12.0
+
+Location
+
+:
+
+Indoor
+
+13.0
+
+Humidity
+
+%
+
+:
+
+100.0
+
+Arc test
+
+14.0
+
+Arc testing
+
+Yes/no
+
+:
+
+Yes
+
+Note 2
+
+Notes
+
+1.0
+
+Converted to 110VDC
+
+2.0
+
+Arc test (type test)

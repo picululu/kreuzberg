@@ -1,10 +1,105 @@
+Overview
+
 Stanley Cups
-Team	Location	Stanley Cups
-Blues	STL	1
-Flyers	PHI	2
-Maple Leafs	TOR	13
+
 Stanley Cups Since 67
-Team	Location	Stanley Cups
-Blues	STL	1
-Flyers	PHI	2
-Maple Leafs	TOR	0
+
+
+
+
+Sheet 1: Stanley Cups
+
+
+
+
+
+Stanley Cups
+
+
+
+
+
+Team
+
+Location
+
+Stanley Cups
+
+
+
+
+
+Blues
+
+STL
+
+1
+
+
+
+
+
+Flyers
+
+PHI
+
+2
+
+
+
+
+
+Maple Leafs
+
+TOR
+
+13
+
+
+Sheet 2: Stanley Cups Since 67
+
+
+
+
+
+Stanley Cups Since 67
+
+
+
+
+
+Team
+
+Location
+
+Stanley Cups
+
+
+
+
+
+Blues
+
+STL
+
+1
+
+
+
+
+
+Flyers
+
+PHI
+
+2
+
+
+
+
+
+Maple Leafs
+
+TOR
+
+0

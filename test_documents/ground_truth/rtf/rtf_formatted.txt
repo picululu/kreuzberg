@@ -1,6 +1,6 @@
 This is a test of FORMATTING. This is hidden: .
 
-SMALL CAPS
+Small Caps
 
 bold
 
@@ -10,8 +10,8 @@ bold and italics
 
 underlined
 
-~~strikeout~~
+strikeout
 
-x^(superscript)
+xsuperscript
 
-x_(subscript)
+xsubscript

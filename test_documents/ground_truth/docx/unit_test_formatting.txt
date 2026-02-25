@@ -1,20 +1,26 @@
-*italic*
+italic
 
-**bold**
+bold
 
 underline
 
-[hyperlink](https://github.com/DS4SD/docling)
+hyperlink
 
-[***italic and bold hyperlink***](https://github.com/DS4SD/docling)
+italic and
+bold hyperlink
 
-Normal *italic* **bold** underline and [hyperlink](https://github.com/DS4SD/docling) on the same line
+Normal italic bold underline and hyperlink on the same
+line
 
-- *Italic bullet 1*
-- **Bold bullet 2**
-- Underline bullet 3
-- Some *italic* **bold** underline
-  - Nested *italic* **bold**
+Italic bullet 1
+
+Bold bullet 2
+
+Underline bullet 3
+
+Some italic bold underline
+
+Nested italic bold
 
 The second page of the document with same header and footer
 

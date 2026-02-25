@@ -1,4 +1,7 @@
-  -------------- ----------------
-  Table header   Another header
-  Content        More content
-  -------------- ----------------
+Table header
+
+Another header
+
+Content
+
+More content

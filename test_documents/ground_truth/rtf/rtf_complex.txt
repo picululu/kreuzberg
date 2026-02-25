@@ -1,31 +1,35 @@
-1.  One
+Text before list
 
-2.  Two
+Cynthia Johnson
 
-    a.  Three
+One
 
-    b.  Four
+Two
 
-        i.  Five
+Three
 
-        ii. Six
+Four
 
-            A.  Seven
+Five
 
-            B.  Eight
+Six
 
-                I.  Nine
+Seven
 
-                II. Ten
+Eight
 
-                    - Eleven
+Nine
 
-                    - Twelve
+Ten
+
+Eleven
+
+Twelve
 
 Out of list!
 
 Start with
 
-7.  Seven Start
+Seven Start
 
-8.  Eight Continue
+Eight Continue

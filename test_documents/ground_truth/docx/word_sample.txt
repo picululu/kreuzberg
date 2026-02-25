@@ -1,49 +1,69 @@
-![Figure 1: This is a cute duckling](media/image1.png){alt="A cartoon duck holding a paper Description automatically generated" width="1.8in" height="1.8in"}
+Swimming in the lake
 
-# Let's swim!
+Summer activities
 
-To get started with swimming, first lay down in a water and try not to drown:
+Duck
 
-- You can relax and look around
+Figure 1: This is a cute duckling
 
-- Paddle about
+Let’s swim!
 
-- Enjoy summer warmth
+To get started with swimming, first lay down in a water and try not
+to drown:
 
-  Also, don't forget:
+You can relax and look around
 
-1.  Wear sunglasses
+Paddle about
 
-2.  Don't forget to drink water
+Enjoy summer warmth
 
-3.  Use sun cream
+Also, don’t forget:
 
-    Hmm, what else...
+Wear sunglasses
 
-## Let's eat
+Don’t forget to drink water
 
-After we had a good day of swimming in the lake, it's important to eat something nice
+Use sun cream
 
-> I like to eat leaves
+Hmm, what else…
+
+Let’s eat
+
+After we had a good day of swimming in the lake, it’s important to
+eat something nice
+
+I like to eat leaves
 
 Here are some interesting things a respectful duck could eat:
 
-  ----------------------------------------------------------------------------------
-                          Food                               Calories per portion
-  ----------------------- ---------------------------------- -----------------------
-  Leaves                  Ash, Elm, Maple                    50
+Content table
 
-  Berries                 Blueberry, Strawberry, Cranberry   150
+Food
 
-  Grain                   Corn, Buckwheat, Barley            200
-  ----------------------------------------------------------------------------------
+Calories per portion
 
-  : Content table
+Leaves
 
-And let's add another list in the end:
+Ash, Elm, Maple
 
-1.  Leaves
+50
 
-2.  Berries
+Berries
 
-3.  Grain
+Blueberry, Strawberry, Cranberry
+
+150
+
+Grain
+
+Corn, Buckwheat, Barley
+
+200
+
+And let’s add another list in the end:
+
+Leaves
+
+Berries
+
+Grain
