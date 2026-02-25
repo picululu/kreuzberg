@@ -39,39 +39,6 @@ pub fn parse_jotdown_attributes(attrs: &jotdown::Attributes) -> crate::types::At
     }
 }
 
-/// Parse djot attribute syntax from string: {.class #id key="value"}
-#[allow(dead_code)]
-pub fn parse_djot_attributes(attr_str: &str) -> crate::types::Attributes {
-    use crate::types::Attributes;
-
-    let mut attrs = Attributes {
-        id: None,
-        classes: Vec::new(),
-        key_values: Vec::new(),
-    };
-
-    // Simple parser for attribute syntax
-    let tokens = attr_str.split_whitespace();
-
-    for token in tokens {
-        if let Some(class) = token.strip_prefix('.') {
-            // Class
-            attrs.classes.push(class.to_string());
-        } else if let Some(id) = token.strip_prefix('#') {
-            // ID
-            attrs.id = Some(id.to_string());
-        } else if token.contains('=') {
-            // Key-value pair
-            if let Some((key, value)) = token.split_once('=') {
-                let clean_value = value.trim_matches('"').trim_matches('\'');
-                attrs.key_values.push((key.to_string(), clean_value.to_string()));
-            }
-        }
-    }
-
-    attrs
-}
-
 /// Render attributes to djot attribute syntax.
 ///
 /// Converts Kreuzberg's Attributes struct back to djot attribute syntax:

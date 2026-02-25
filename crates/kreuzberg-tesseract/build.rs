@@ -107,15 +107,19 @@ mod build_tesseract {
     /// 2. Check target-specific `CXX_{target}` env var (e.g. `CXX_x86_64_unknown_linux_musl`)
     /// 3. Fall back to `{fallback}` (e.g. "clang++" or "g++")
     fn resolve_cxx_compiler(target: &str, fallback: &str) -> String {
-        // 1. Explicit CXX override
+        // 1. Explicit CXX override (skip empty strings, e.g. from CI unsetting via GITHUB_ENV)
         if let Ok(cxx) = env::var("CXX") {
-            return cxx;
+            if !cxx.is_empty() {
+                return cxx;
+            }
         }
 
         // 2. Target-specific CXX (hyphens → underscores, matching cc-rs convention)
         let target_env = target.replace('-', "_");
         if let Ok(cxx) = env::var(format!("CXX_{target_env}")) {
-            return cxx;
+            if !cxx.is_empty() {
+                return cxx;
+            }
         }
 
         // 3. Default fallback

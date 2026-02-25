@@ -12,6 +12,13 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Ensure python is available
+      shell: bash
+      run: |
+        if ! command -v python &>/dev/null && command -v python3 &>/dev/null; then
+          sudo ln -sf "$(command -v python3)" /usr/local/bin/python
+        fi
+
     - name: Install WASI SDK
       uses: bytecodealliance/setup-wasi-sdk-action@dcd040abc428fe35253676ef0e6379fba9bf8f9f # main
       with:

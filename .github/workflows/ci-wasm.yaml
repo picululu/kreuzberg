@@ -84,16 +84,33 @@ jobs:
     timeout-minutes: 180
     permissions:
       contents: read
+    # Serialize matrix jobs to prevent concurrent cache API writes that trigger rate limits
+    concurrency:
+      group: ci-wasm-unit-${{ github.event.pull_request.number || github.ref }}-${{ matrix.os }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
+            matrix-index: 1
           - os: macos-latest
+            matrix-index: 2
           - os: windows-latest
+            matrix-index: 3
     steps:
       - uses: actions/checkout@v4
         id: checkout
+
+      - name: Serialize matrix job execution (prevent cache API rate limits)
+        shell: bash
+        run: |
+          MATRIX_INDEX=${{ matrix.matrix-index }}
+          if [ "$MATRIX_INDEX" -gt 1 ]; then
+            DELAY_SECONDS=$(((MATRIX_INDEX - 1) * 300))
+            echo "Matrix index: $MATRIX_INDEX — delaying $DELAY_SECONDS seconds to prevent cache API rate limits"
+            sleep "$DELAY_SECONDS"
+          fi
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
@@ -138,19 +155,36 @@ jobs:
     timeout-minutes: 180
     permissions:
       contents: read
+    # Serialize matrix jobs to prevent concurrent cache API writes that trigger rate limits
+    concurrency:
+      group: ci-wasm-build-${{ github.event.pull_request.number || github.ref }}-${{ matrix.os }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            matrix-index: 1
           - os: macos-latest
             target: aarch64-apple-darwin
+            matrix-index: 2
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            matrix-index: 3
     steps:
       - uses: actions/checkout@v4
         id: checkout
+
+      - name: Serialize matrix job execution (prevent cache API rate limits)
+        shell: bash
+        run: |
+          MATRIX_INDEX=${{ matrix.matrix-index }}
+          if [ "$MATRIX_INDEX" -gt 1 ]; then
+            DELAY_SECONDS=$(((MATRIX_INDEX - 1) * 300))
+            echo "Matrix index: $MATRIX_INDEX — delaying $DELAY_SECONDS seconds to prevent cache API rate limits"
+            sleep "$DELAY_SECONDS"
+          fi
 
       - name: Install system dependencies
         uses: ./.github/actions/install-system-deps
