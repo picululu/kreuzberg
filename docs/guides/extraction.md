@@ -60,6 +60,10 @@ Extract text, tables, and metadata from a file on disk.
 
     --8<-- "snippets/go/api/extract_file_sync.md"
 
+=== "C"
+
+    --8<-- "snippets/c/api/extract_file_sync.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/extract_file_sync.md"
@@ -97,6 +101,10 @@ Extract text, tables, and metadata from a file on disk.
 === "Go"
 
     --8<-- "snippets/go/api/extract_file_async.md"
+
+=== "C"
+
+    --8<-- "snippets/c/api/extract_file_async.md"
 
 === "C#"
 
@@ -206,6 +214,10 @@ Extract from data already loaded in memory.
 
     --8<-- "snippets/go/api/extract_bytes_sync.md"
 
+=== "C"
+
+    --8<-- "snippets/c/api/extract_bytes_sync.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/extract_bytes_sync.md"
@@ -243,6 +255,10 @@ Extract from data already loaded in memory.
 === "Go"
 
     --8<-- "snippets/go/api/extract_bytes_async.md"
+
+=== "C"
+
+    --8<-- "snippets/c/api/extract_bytes_async.md"
 
 === "C#"
 
@@ -289,6 +305,10 @@ Process multiple files concurrently for better performance.
 
     --8<-- "snippets/go/api/batch_extract_files_sync.md"
 
+=== "C"
+
+    --8<-- "snippets/c/api/batch_extract_files_sync.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/batch_extract_files_sync.md"
@@ -326,6 +346,10 @@ Process multiple files concurrently for better performance.
 === "Go"
 
     --8<-- "snippets/go/api/batch_extract_bytes_sync.md"
+
+=== "C"
+
+    --8<-- "snippets/c/api/batch_extract_bytes_sync.md"
 
 === "C#"
 
@@ -469,6 +493,10 @@ All extraction functions raise exceptions on failure:
 === "Go"
 
     --8<-- "snippets/go/api/error_handling.md"
+
+=== "C"
+
+    --8<-- "snippets/c/api/error_handling.md"
 
 === "C#"
 

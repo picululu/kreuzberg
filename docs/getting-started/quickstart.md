@@ -15,6 +15,10 @@ Get up and running with Kreuzberg in minutes.
 
 Extract text from any supported document format:
 
+=== "C"
+
+    --8<-- "snippets/c/api/extract_file_sync.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/extract_file_sync.md"
@@ -62,6 +66,10 @@ Extract text from any supported document format:
 ## Async Extraction
 
 For better performance with I/O-bound operations:
+
+=== "C"
+
+    --8<-- "snippets/c/api/extract_file_async.md"
 
 === "C#"
 
@@ -113,6 +121,10 @@ For better performance with I/O-bound operations:
 
 Extract text from images and scanned documents:
 
+=== "C"
+
+    --8<-- "snippets/c/ocr/ocr_extraction.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/ocr_extraction.md"
@@ -161,6 +173,10 @@ Extract text from images and scanned documents:
 
 Process multiple files concurrently:
 
+=== "C"
+
+    --8<-- "snippets/c/api/batch_extract_files_sync.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/batch_extract_files_sync.md"
@@ -208,6 +224,10 @@ Process multiple files concurrently:
 ## Extract from Bytes
 
 When you already have file content in memory:
+
+=== "C"
+
+    --8<-- "snippets/c/api/extract_bytes_sync.md"
 
 === "C#"
 
@@ -268,6 +288,10 @@ When you already have file content in memory:
 ## Advanced Configuration
 
 Customize extraction behavior:
+
+=== "C"
+
+    --8<-- "snippets/c/config/advanced_config.md"
 
 === "C#"
 
@@ -366,6 +390,10 @@ Customize extraction behavior:
 ## Working with Metadata
 
 Access format-specific metadata from extracted documents:
+
+=== "C"
+
+    --8<-- "snippets/c/metadata/metadata.md"
 
 === "C#"
 
@@ -477,6 +505,10 @@ See [Types Reference](../reference/types.md) for complete metadata reference.
 
 Extract and process tables from documents:
 
+=== "C"
+
+    --8<-- "snippets/c/metadata/tables.md"
+
 === "C#"
 
     --8<-- "snippets/csharp/tables.md"
@@ -561,6 +593,10 @@ Extract and process tables from documents:
 ## Error Handling
 
 Handle extraction errors gracefully:
+
+=== "C"
+
+    --8<-- "snippets/c/api/error_handling.md"
 
 === "C#"
 

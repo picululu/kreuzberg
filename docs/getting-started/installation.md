@@ -20,6 +20,7 @@ Kreuzberg is available in multiple formats optimized for different runtimes: nat
 | **PHP**                | `kreuzberg/kreuzberg`     | Fastest (native) | PHP applications, ext-ffi                         |
 | **C#/.NET**            | `Kreuzberg` (NuGet)       | Fastest (native) | .NET applications, P/Invoke                       |
 | **Rust**               | `kreuzberg` crate         | Fastest (native) | Rust projects, full control                       |
+| **C/C++**              | `libkreuzberg_ffi`        | Fastest (native) | C/C++ applications, custom FFI integrations       |
 | **CLI/Docker**         | `kreuzberg-cli`           | Fastest (native) | Command-line usage, batch processing              |
 
 ### Performance Notes
@@ -287,6 +288,33 @@ cargo add kreuzberg --features "excel stopwords ocr"
 ```
 
 Next steps: [Rust API Reference](../reference/api-rust.md)
+
+## C / C++
+
+Build the FFI library from source:
+
+```bash title="Terminal"
+cargo build --release -p kreuzberg-ffi
+```
+
+The build produces a static library (`libkreuzberg_ffi.a` / `kreuzberg_ffi.lib`) and a C header (`crates/kreuzberg-ffi/kreuzberg.h`). Include the header and link against the static library in your project:
+
+```makefile title="Makefile"
+HEADER_DIR = path/to/crates/kreuzberg-ffi
+LIBDIR     = path/to/target/release
+
+CFLAGS  = -Wall -Wextra -I$(HEADER_DIR)
+LDFLAGS = -L$(LIBDIR) -lkreuzberg_ffi -lpthread -ldl -lm
+
+my_app: my_app.c
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+```
+
+On macOS, add `-framework CoreFoundation -framework Security` to `LDFLAGS`. On Windows, link `-lws2_32 -luserenv -lbcrypt` instead.
+
+**Requirements:** C compiler (gcc, clang, or MSVC), Rust toolchain for building the FFI crate
+
+Next steps: [C API Reference](../reference/api-c.md)
 
 ## Elixir
 
