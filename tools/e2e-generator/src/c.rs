@@ -356,15 +356,16 @@ CExtractionResult *run_extraction_bytes(const char *relative, const char *config
 
 int skip_if_feature_unavailable(const char *feature) {
     /* Build env-var name: KREUZBERG_{UPPER_FEATURE}_AVAILABLE */
-    char env_var[256];
-    snprintf(env_var, sizeof(env_var), "KREUZBERG_");
-    size_t prefix_len = strlen(env_var);
-    size_t feat_len   = strlen(feature);
-    for (size_t i = 0; i < feat_len && prefix_len + i + 1 < sizeof(env_var); i++) {
+    char upper_feature[128];
+    size_t feat_len = strlen(feature);
+    size_t copy_len = feat_len < sizeof(upper_feature) - 1 ? feat_len : sizeof(upper_feature) - 1;
+    for (size_t i = 0; i < copy_len; i++) {
         char ch = feature[i];
-        env_var[prefix_len + i] = (ch == '-') ? '_' : (char)toupper((unsigned char)ch);
+        upper_feature[i] = (ch == '-') ? '_' : (char)toupper((unsigned char)ch);
     }
-    strncat(env_var, "_AVAILABLE", sizeof(env_var) - strlen(env_var) - 1);
+    upper_feature[copy_len] = '\0';
+    char env_var[256];
+    snprintf(env_var, sizeof(env_var), "KREUZBERG_%s_AVAILABLE", upper_feature);
 
     const char *flag = getenv(env_var);
     if (!flag || strcmp(flag, "0") == 0 || strcasecmp(flag, "false") == 0) {
@@ -629,10 +630,10 @@ void assert_document(const CExtractionResult *result,
             exit(1);
         }
         if (has_min_node_count) {
-            /* Count "nodeType" occurrences as a proxy for node count */
+            /* Count "node_type" occurrences as a proxy for node count */
             size_t occurrences = 0;
             const char *p = doc_json;
-            while ((p = strstr(p, "\"nodeType\"")) != NULL) {
+            while ((p = strstr(p, "\"node_type\"")) != NULL) {
                 occurrences++;
                 p++;
             }
@@ -984,11 +985,14 @@ fn render_test(fixture: &Fixture) -> Result<(String, String)> {
             writeln!(code, "    if (!result) return; /* skipped */")?;
         }
         (ExtractionMethod::BatchSync, _) | (ExtractionMethod::BatchAsync, _) => {
-            writeln!(code, "    const char *batch_paths[] = {{ {doc_path} }};")?;
+            writeln!(code, "    char *doc_path = ensure_document({doc_path}, 1);")?;
+            writeln!(code, "    if (!doc_path) return; /* document missing */")?;
+            writeln!(code, "    const char *batch_paths[] = {{ doc_path }};")?;
             writeln!(
                 code,
                 "    CBatchResult *batch = kreuzberg_batch_extract_files_sync(batch_paths, 1, {config_literal});"
             )?;
+            writeln!(code, "    free(doc_path);")?;
             writeln!(code, "    if (!batch) {{")?;
             writeln!(
                 code,
@@ -1221,6 +1225,8 @@ fn generate_plugin_api_tests(c_root: &Utf8Path, fixtures: &[&Fixture]) -> Result
     writeln!(buf, "#include <stdio.h>")?;
     writeln!(buf, "#include <stdlib.h>")?;
     writeln!(buf, "#include <string.h>")?;
+    writeln!(buf, "#include <unistd.h>")?;
+    writeln!(buf, "#include <sys/stat.h>")?;
     writeln!(buf)?;
 
     // Group by api_category
@@ -1557,7 +1563,7 @@ fn render_c_mime_from_bytes(
         writeln!(buf, "    if (!str_contains_ci(mime, {contains_lit})) {{")?;
         writeln!(
             buf,
-            "        fprintf(stderr, \"FAIL: expected MIME to contain \\\"{contains}\\\", got %%s\\n\", mime);"
+            "        fprintf(stderr, \"FAIL: expected MIME to contain \\\"{contains}\\\", got %s\\n\", mime);"
         )?;
         writeln!(buf, "        kreuzberg_free_string(mime);")?;
         writeln!(buf, "        exit(1);")?;
@@ -1623,7 +1629,7 @@ fn render_c_mime_from_path(
         writeln!(buf, "    if (!str_contains_ci(mime, {contains_lit})) {{")?;
         writeln!(
             buf,
-            "        fprintf(stderr, \"FAIL: expected MIME to contain \\\"{contains}\\\", got %%s\\n\", mime);"
+            "        fprintf(stderr, \"FAIL: expected MIME to contain \\\"{contains}\\\", got %s\\n\", mime);"
         )?;
         writeln!(buf, "        kreuzberg_free_string(mime);")?;
         writeln!(buf, "        exit(1);")?;
@@ -1667,7 +1673,7 @@ fn render_c_mime_extension_lookup(
         writeln!(buf, "    if (!str_contains_ci(extensions, {contains_lit})) {{")?;
         writeln!(
             buf,
-            "        fprintf(stderr, \"FAIL: expected extensions to contain \\\"{contains}\\\", got %%s\\n\", extensions);"
+            "        fprintf(stderr, \"FAIL: expected extensions to contain \\\"{contains}\\\", got %s\\n\", extensions);"
         )?;
         writeln!(buf, "        kreuzberg_free_string(extensions);")?;
         writeln!(buf, "        exit(1);")?;
