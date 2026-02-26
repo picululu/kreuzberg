@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 import * as readline from "node:readline";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import {
 	enableOcr,
 	extractFile,
@@ -9,6 +10,32 @@ import {
 	initWasm,
 	type ExtractionConfig,
 } from "@kreuzberg/wasm";
+
+/** Default per-extraction timeout in milliseconds (5 minutes). */
+const DEFAULT_TIMEOUT_MS = 300_000;
+
+/** Parse EXTRACTION_TIMEOUT_MS from env, falling back to the default. */
+const EXTRACTION_TIMEOUT_MS: number = (() => {
+	const env = process.env["EXTRACTION_TIMEOUT_MS"];
+	if (env) {
+		const parsed = Number.parseInt(env, 10);
+		if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+	}
+	return DEFAULT_TIMEOUT_MS;
+})();
+
+/** Whether debug logging is enabled (BENCHMARK_DEBUG env var). */
+const DEBUG = !!process.env["BENCHMARK_DEBUG"];
+
+/** Running extraction counter for diagnostics. */
+let extractionCount = 0;
+
+function log(msg: string): void {
+	if (DEBUG) {
+		const mem = (process.memoryUsage().rss / 1024 / 1024).toFixed(0);
+		process.stderr.write(`[wasm:${extractionCount}:${mem}MB] ${msg}\n`);
+	}
+}
 
 interface ExtractionOutput {
 	content: string;
@@ -103,11 +130,50 @@ function createConfig(ocrEnabled: boolean, forceOcr?: boolean): ExtractionConfig
 	};
 }
 
+/**
+ * Race an extraction promise against a timeout.
+ * On timeout, returns a rejected promise with a descriptive error including
+ * the file path, MIME type, file size, and memory usage for debugging.
+ */
+async function withTimeout<T>(promise: Promise<T>, filePath: string, mimeType: string | null): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
+	const timeoutPromise = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => {
+			const fileSize = (() => {
+				try {
+					return fs.statSync(filePath).size;
+				} catch {
+					return -1;
+				}
+			})();
+			const mem = process.memoryUsage();
+			reject(
+				new Error(
+					`Extraction timed out after ${EXTRACTION_TIMEOUT_MS}ms` +
+						` | file=${filePath}` +
+						` | mime=${mimeType ?? "unknown"}` +
+						` | fileSize=${fileSize}` +
+						` | rss=${mem.rss}` +
+						` | heapUsed=${mem.heapUsed}` +
+						` | heapTotal=${mem.heapTotal}` +
+						` | extractionCount=${extractionCount}`,
+				),
+			);
+		}, EXTRACTION_TIMEOUT_MS);
+	});
+
+	try {
+		return await Promise.race([promise, timeoutPromise]);
+	} finally {
+		clearTimeout(timer!);
+	}
+}
+
 async function extractAsync(filePath: string, ocrEnabled: boolean): Promise<ExtractionOutput> {
 	const config = createConfig(ocrEnabled);
 	const mimeType = guessMimeType(filePath);
 	const start = performance.now();
-	const result = await extractFile(filePath, mimeType, config);
+	const result = await withTimeout(extractFile(filePath, mimeType, config), filePath, mimeType);
 	const durationMs = performance.now() - start;
 
 	const metadata = (result.metadata as Record<string, unknown>) ?? {};
@@ -123,7 +189,12 @@ async function extractAsync(filePath: string, ocrEnabled: boolean): Promise<Extr
 async function extractBatch(filePaths: string[], ocrEnabled: boolean): Promise<ExtractionOutput[]> {
 	const config = createConfig(ocrEnabled);
 	const start = performance.now();
-	const results = await Promise.all(filePaths.map((fp) => extractFile(fp, guessMimeType(fp), config)));
+	const results = await Promise.all(
+		filePaths.map((fp) => {
+			const mime = guessMimeType(fp);
+			return withTimeout(extractFile(fp, mime, config), fp, mime);
+		}),
+	);
 	const totalDurationMs = performance.now() - start;
 
 	const perFileDurationMs = filePaths.length > 0 ? totalDurationMs / filePaths.length : 0;
@@ -170,12 +241,18 @@ async function runServer(ocrEnabled: boolean): Promise<void> {
 		if (!filePath) {
 			continue;
 		}
+
+		extractionCount++;
+		const mimeType = guessMimeType(filePath);
+		log(`START ${filePath} (mime=${mimeType ?? "unknown"})`);
+
 		const start = performance.now();
 		try {
 			const config = createConfig(ocrEnabled || forceOcr, forceOcr);
-			const mimeType = guessMimeType(filePath);
-			const result = await extractFile(filePath, mimeType, config);
+			const result = await withTimeout(extractFile(filePath, mimeType, config), filePath, mimeType);
 			const durationMs = performance.now() - start;
+
+			log(`OK    ${filePath} (${durationMs.toFixed(1)}ms, ${result.content.length} chars)`);
 
 			const metadata = (result.metadata as Record<string, unknown>) ?? {};
 			const payload: ExtractionOutput = {
@@ -189,6 +266,10 @@ async function runServer(ocrEnabled: boolean): Promise<void> {
 		} catch (err) {
 			const durationMs = performance.now() - start;
 			const error = err as Error;
+
+			// Always log failures to stderr (not gated on DEBUG) so CI logs capture them
+			process.stderr.write(`[wasm:ERROR] extraction #${extractionCount} failed: ${error.message}\n`);
+
 			console.log(
 				JSON.stringify({
 					error: error.message,
@@ -221,6 +302,8 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
+	process.stderr.write(`[wasm] initializing (timeout=${EXTRACTION_TIMEOUT_MS}ms, debug=${DEBUG})\n`);
+
 	// Initialize WASM BEFORE timing measurement
 	await initWasm();
 
@@ -231,8 +314,9 @@ async function main(): Promise<void> {
 	if (wasmModule) {
 		try {
 			await initializePdfiumAsync(wasmModule);
+			process.stderr.write("[wasm] PDFium initialized\n");
 		} catch {
-			// PDFium not available — PDF extraction will be disabled
+			process.stderr.write("[wasm] PDFium not available — PDF extraction disabled\n");
 		}
 	}
 
@@ -240,10 +324,13 @@ async function main(): Promise<void> {
 	if (ocrEnabled) {
 		try {
 			await enableOcr();
+			process.stderr.write("[wasm] OCR enabled\n");
 		} catch (err) {
-			console.error("Failed to enable OCR:", (err as Error).message);
+			process.stderr.write(`[wasm] Failed to enable OCR: ${(err as Error).message}\n`);
 		}
 	}
+
+	process.stderr.write("[wasm] initialization complete\n");
 
 	const mode = args[0];
 	const filePaths = args.slice(1);
